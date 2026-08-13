@@ -29,6 +29,12 @@
       };
       init.defaultBranch = "main";
       pull.rebase = true;
+      # /etc/nixos is root-owned and this user is not root, so libgit2 refuses
+      # to open it — which breaks `nh os switch`, since nh declines to run as
+      # root. This is the declarative equivalent of `git config --global --add
+      # safe.directory`, which cannot be run here: ~/.config/git/config is a
+      # read-only store symlink.
+      safe.directory = [ "/etc/nixos" ];
       push.autoSetupRemote = true;
       # jj writes its own operations through the git backend; this keeps the
       # colocated .git from re-packing constantly.
