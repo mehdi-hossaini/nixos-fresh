@@ -110,6 +110,11 @@ in
       "/var/lib/nixos"
       "/var/lib/bluetooth"
       "/var/lib/systemd/coredump"
+      # nix-gc, nix-optimise and fwupd-refresh are all Persistent=yes timers,
+      # and this is where systemd stamps their last run. Wiped every boot, the
+      # weekly schedule reads as "missed" on each one — so a GC and a store
+      # optimise fire minutes after every boot instead of weekly.
+      "/var/lib/systemd/timers"
       "/var/lib/fwupd"
       "/var/lib/AccountsService"
       "/var/db/sudo"
@@ -127,6 +132,17 @@ in
     "Desktop"
     ".ssh"
     ".gnupg"
+    # Claude Code: credentials, session history and per-project memory. Not
+    # under .config — it keeps its own tree, and .claude.json normally sits
+    # loose in the home root where only a file-level bind mount could catch
+    # it. That mount breaks the first time the app rewrites the file via
+    # temp+rename, so CLAUDE_CONFIG_DIR (home.nix) moves the json in here
+    # instead and one directory covers everything.
+    ".claude"
+    # VS Code puts *extensions* here, not in ~/.config/Code — that half holds
+    # only settings and workspace state. Without this, every reboot is a full
+    # extension reinstall.
+    ".vscode"
     # Wholesale, deliberately: Plasma owns its own config and we are not
     # declaring it. ~/.config/jj rides along here too.
     ".config"
