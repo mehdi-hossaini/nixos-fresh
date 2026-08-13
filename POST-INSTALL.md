@@ -1,6 +1,7 @@
 # After first boot
 
-Seven steps, about 10 minutes. Do them in order — 4 depends on 3.
+Seven steps, about 10 minutes. Do them in order — both 0 and 4 need the
+authentication from 3, which needs the key from 2.
 
 ## 0. Make this repo private again — DO THIS FIRST
 
@@ -63,15 +64,48 @@ gh auth login          # choose SSH, it will find the key from step 2
 gh auth status
 ```
 
-## 4. Push this config
+## 4. Reconnect this config to the repo it came from
 
-It is currently only on the USB stick and this machine.
+Not a `gh repo create` — `mehdi-hossaini/nixos-fresh` already exists, which is
+the whole premise of step 0. It has its own history on `main`, ending at the
+commit that added this file. Meanwhile `installer.sh` left `/etc/nixos`
+root-owned, and a local `git init` has already run in it, on `master`, with a
+history **unrelated** to the remote's. Those two histories have to be joined,
+and `git push` will refuse until they are.
+
+First take ownership, so `git` and `gh` use your SSH key from step 2 rather than
+root's, which does not exist:
+
+```sh
+sudo chown -R mehti:users /etc/nixos
+```
+
+That trades a little safety — anything running as you can now edit the system
+config without a password — for a workflow that actually functions. The
+alternative is keeping it root-owned and passing your key explicitly to every
+push with `sudo git -c core.sshCommand='ssh -i ~/.ssh/id_ed25519'`, which gets
+old fast.
+
+Then graft this machine's state onto the real history:
 
 ```sh
 cd /etc/nixos
-git init && git add -A && git commit -m "initial: fresh install"
-gh repo create nixos-fresh --private --source=. --push
+git remote add origin git@github.com:mehdi-hossaini/nixos-fresh.git
+git fetch origin
+git reset --soft origin/main    # moves the branch pointer, touches no files
+git commit -m "post-install: machine-specific config"
+git branch -m master main
+git push -u origin main
 ```
+
+`reset --soft` leaves every file exactly as it is on disk, so what lands on the
+remote is one honest commit describing how this machine differs from what was
+cloned. Do not force-push: the remote history is the one worth keeping, and the
+local `master` commits only exist because the disk was reinstalled.
+
+Once `/etc/nixos` is yours, the `safe.directory` line in `home.nix` is no longer
+load-bearing. Leave it — it costs nothing and covers you if ownership ever
+reverts to root.
 
 ## 5. secretspec
 
