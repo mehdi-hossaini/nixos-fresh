@@ -180,6 +180,30 @@ in
     ".cache/nvidia"
   ];
 
+  # hideMounts already puts x-gvfs-hide on every impermanence mount unit, but
+  # that option is userspace-only: it lives in /run/mount/utab, not in the
+  # kernel mount table. These three are mounted too early for the utab write to
+  # stick — journald pulls /var/log in before local-fs.target, /var/lib/nixos
+  # rides along with it, and /etc/machine-id is bind-mounted by an activation
+  # script that has no unit at all. So they alone stay visible in Dolphin.
+  # Re-applying the option once /run/mount is usable is enough; remount,bind
+  # touches only the userspace half and leaves the kernel flags as they are.
+  systemd.services.hide-early-mounts = {
+    description = "Re-apply x-gvfs-hide to mounts made before utab was writable";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "local-fs.target" ];
+    path = [ pkgs.util-linux ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      for m in /var/log /var/lib/nixos /etc/machine-id; do
+        mount -o remount,bind,x-gvfs-hide "$m" || true
+      done
+    '';
+  };
+
   # ═══ Second disk: unlocked AFTER switch-root, not in the initrd ═════════
   # The keyfile lives on the encrypted root, so the initrd cannot read it —
   # which is the point: there is no key on the unencrypted ESP to steal.
