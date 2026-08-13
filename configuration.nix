@@ -109,18 +109,31 @@ in
       "/var/log"
       "/var/lib/nixos"
       "/var/lib/bluetooth"
-      "/var/lib/systemd/coredump"
-      # nix-gc, nix-optimise and fwupd-refresh are all Persistent=yes timers,
-      # and this is where systemd stamps their last run. Wiped every boot, the
-      # weekly schedule reads as "missed" on each one — so a GC and a store
-      # optimise fire minutes after every boot instead of weekly.
-      "/var/lib/systemd/timers"
+      # The whole tree rather than a list of subdirectories: timers, backlight,
+      # rfkill, timesync, random-seed and coredump all live here and all want to
+      # survive a boot. timers/ is the load-bearing one — nix-gc, nix-optimise
+      # and fwupd-refresh are Persistent=yes, so wiping their last-run stamps
+      # makes every boot look like a missed weekly run and fires a GC and a
+      # store optimise minutes later. On a laptop backlight/ is the one you
+      # notice: without it screen brightness resets on every boot.
+      # Everything else under here (catalog, ephemeral-trees) is regenerated.
+      "/var/lib/systemd"
+      # /etc/NetworkManager/system-connections above is the config half; this is
+      # the runtime half — secret_key, seen-bssids, timestamps, DHCP leases.
+      # Unpersisted, NM mints a fresh secret_key every boot and forgets which
+      # network you last used, which is what orders autoconnect.
+      "/var/lib/NetworkManager"
       "/var/lib/fwupd"
       "/var/lib/AccountsService"
       "/var/db/sudo"
     ];
     files = [ "/etc/machine-id" ];
   };
+
+  # Set as its own statement rather than nesting the list one level deeper: it
+  # keeps the diff to a line. Without it every entry below shows up as a device
+  # in Dolphin's sidebar, and the list is long enough now to bury the real ones.
+  environment.persistence."/persistent/userdata".hideMounts = true;
 
   environment.persistence."/persistent/userdata".users.${user}.directories = [
     "Projects"
@@ -152,6 +165,13 @@ in
     # recompiling every dependency of every Rust project from scratch.
     ".cargo"
     ".cache/sccache"
+    # Same argument as the two above — pure rebuild cost, no data. nix is the
+    # eval cache, so without it every `nh os switch` re-evaluates this flake
+    # cold. The two shader caches are why the first run of anything on the GPU
+    # after a reboot stutters: the driver recompiles pipelines it already had.
+    ".cache/nix"
+    ".cache/mesa_shader_cache"
+    ".cache/nvidia"
   ];
 
   # ═══ Second disk: unlocked AFTER switch-root, not in the initrd ═════════
