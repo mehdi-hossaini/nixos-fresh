@@ -41,6 +41,12 @@ let
     base0F = "#f28534";
   };
 
+  # Gruvbox's "hard" background, one step darker than base00. Used for the
+  # window background *only* — ANSI color0 stays base00. Without this split the
+  # two are the same value and black text renders invisible against the
+  # background it is drawn on; the gap gives color0 somewhere to be seen.
+  backgroundHard = "#1d2021";
+
   # One string, four styles. Change this to reface the terminal.
   terminalFont = "JetBrainsMono Nerd Font Mono";
 in
@@ -130,7 +136,7 @@ in
           family = terminalFont;
           style = "Bold Italic";
         };
-        size = 11.0;
+        size = 12.5;
         # +2px of leading. Terminal output is unindented and left-aligned, so
         # the row is the only unit separating one line from the next — a little
         # air makes dense logs scannable without costing a font size.
@@ -203,7 +209,7 @@ in
       # ── Colour ──────────────────────────────────────────────────────────
       colors = {
         primary = {
-          background = theme.base00;
+          background = backgroundHard;
           foreground = theme.base05;
           dim_foreground = theme.base04;
           bright_foreground = theme.base07;
