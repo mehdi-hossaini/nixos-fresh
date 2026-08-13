@@ -96,6 +96,12 @@ in
   fileSystems."/persistent".neededForBoot = true;
   fileSystems."/nix".neededForBoot = true;
 
+  # /persistent is the one mount hideMounts above cannot reach — it comes from
+  # disko, not impermanence. Set here rather than in disko.nix because the
+  # mountOptions there are shared with @root and @nix. fileSystems options are a
+  # list, so module merging appends this to disko's rather than replacing them.
+  fileSystems."/persistent".options = [ "x-gvfs-hide" ];
+
   systemd.tmpfiles.rules = [
     "d /persistent/system/secrets 0700 root root -"
   ];
