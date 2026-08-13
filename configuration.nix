@@ -329,6 +329,9 @@ in
     # Browser, terminal, editor
     brave-origin
     alacritty
+    # Alacritty has no tabs by design, so the multiplexer is not optional here —
+    # without it you get one OS window per task.
+    zellij
     vscode
 
     claude-code
@@ -345,6 +348,17 @@ in
     devenv
     secretspec
     sccache
+
+    # Agent toolbelt — the tools a coding agent reaches for via Bash. Structural
+    # AST search beats regex grep for code patterns; the other two are the
+    # pre-commit checks worth having on PATH rather than remembering to install.
+    ast-grep
+    shellcheck
+    gitleaks
+
+    # Ad-hoc Python tooling with no venv sprawl. There is one pyproject.toml
+    # project in Projects/ and uv is also how one-off Python CLIs get run.
+    uv
 
     # Nix tooling
     nh
