@@ -1,6 +1,21 @@
 # After first boot
 
-Six steps, about 10 minutes. Do them in order — 3 depends on 2.
+Seven steps, about 10 minutes. Do them in order — 4 depends on 3.
+
+## 0. Make this repo private again — DO THIS FIRST
+
+It was flipped public so the live ISO could `git clone` it without
+authenticating. Nothing secret is in it (the password hash and the LUKS keyfile
+are generated at install time and never enter git), but public was a temporary
+convenience, not a decision.
+
+```sh
+gh repo edit mehdi-hossaini/nixos-fresh --visibility private \
+  --accept-visibility-change-consequences
+```
+
+This needs `gh auth login` first — so in practice: do step 2 and 3, then come
+straight back here.
 
 ## 1. Confirm impermanence actually works
 
