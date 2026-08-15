@@ -8,7 +8,8 @@ How much there is to do depends entirely on whether you installed with
 | SSH key | already there | generate + register with GitHub |
 | `gh` login | already there | `gh auth login` |
 | Claude Code login | already there | log in once |
-| secretspec | declared, nothing to do | declared, nothing to do |
+| Project `.env` files | restored | gone with the old disk |
+| secretspec | declared, unused by anything | declared, unused by anything |
 | `/etc/nixos` ownership | automatic | automatic |
 | **Total** | **steps 1–3, ~3 min** | **steps 1–3 plus "Logging in by hand"** |
 
@@ -108,11 +109,28 @@ is how they travel.
 ./secrets-bundle.sh create /run/media/$USER/USB/secrets.age
 ```
 
-It tars `~/.ssh`, `~/.config/gh`, `~/.local/share/kwalletd` (which is where the
-`gh` token and every secretspec secret actually live), the Claude Code
-credential and `~/.gnupg`, then encrypts with `age -p` — a passphrase, not a
+It carries two kinds of thing, then encrypts with `age -p` — a passphrase, not a
 keypair, because a keypair would need its own private key delivered to the new
 machine first, which is the problem the bundle exists to solve.
+
+**Credentials, at fixed paths:** `~/.ssh`, `~/.config/gh`, `~/.local/share/kwalletd`
+(where the `gh` token actually lives — `hosts.yml` holds only the account name),
+`~/.claude/.credentials.json`, `~/.claude/.claude.json` and `~/.gnupg`.
+
+**Project `.env` files, found rather than listed**, because they live wherever
+the projects do and a fixed list goes stale the first time you start a new one.
+Only `Projects/` and `Desktop/` are scanned, and that is an impermanence
+constraint rather than a speed one: a restored file survives the first boot only
+if its path is inside a persisted directory. `.git`, `.direnv`, `.devenv`,
+`node_modules`, `.venv`, `__pycache__`, `target` and `.Trash-*` are pruned, and
+`.env.example`/`.sample`/`.template` are excluded — they are committed templates
+with placeholder values, and listing them beside real secrets is exactly the
+confusion you do not want when auditing.
+
+`.env` files are gitignored by design, which means they exist on exactly one
+disk and a reinstall is otherwise the last time you see them. Run
+`./secrets-bundle.sh list` before every `create` and read what it found — the
+`.env` section is printed separately for that reason.
 
 Restore it at install time:
 
@@ -127,8 +145,9 @@ than assuming 1000, and file modes survive the round trip — `.ssh` comes back
 
 **Use the same login password.** KWallet is encrypted with it. Restore the
 wallet onto a machine with a different password and it will sit there intact and
-unopenable, with `gh` and secretspec both reporting no secrets. The installer
-warns about this at the password prompt.
+unopenable, leaving `gh` unauthenticated. The SSH key and the `.env` files are
+plain files and are unaffected — only the wallet depends on the password. The
+installer warns about this at the password prompt.
 
 **Keep the bundle on removable media.** It is every credential you have, and
 `age -p` has no recovery if you forget the passphrase.

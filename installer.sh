@@ -23,10 +23,12 @@
 # were called. Host directories exist to make that unrepresentable.
 #
 # --secrets restores the bundle built by secrets-bundle.sh: SSH key, gh account,
-# KWallet, Claude Code credential. With it the machine is usable the moment it
-# boots; without it you get a correctly configured machine that is logged in to
-# nothing. Everything else in this repo is declarative, but credentials cannot
-# be — no amount of Nix produces a private key GitHub already trusts.
+# KWallet, Claude Code credential, and every project .env it found. With it the
+# machine is usable the moment it boots; without it you get a correctly
+# configured machine that is logged in to nothing. Everything else in this repo
+# is declarative, but credentials cannot be — no amount of Nix produces a
+# private key GitHub already trusts, and a gitignored .env exists on exactly one
+# disk by design.
 #
 # DESTRUCTIVE. Every disk named in hosts/<hostname>/disko.nix is repartitioned.
 # Nothing is backed up.
@@ -288,8 +290,9 @@ say "Password for user '$USER_NAME'"
 if [ -n "$SECRETS_BUNDLE" ]; then
 	note "The bundle contains KWallet, which is encrypted with your LOGIN"
 	note "PASSWORD. Type the SAME password you use on the machine the bundle"
-	note "came from, or the wallet will restore intact and refuse to open —"
-	note "and gh and secretspec will both come up with no secrets."
+	note "came from, or the wallet will restore intact and refuse to open,"
+	note "leaving gh unauthenticated. The SSH key and .env files are plain"
+	note "files and are unaffected."
 	echo
 fi
 hash_password() {
@@ -409,7 +412,8 @@ if [ -n "$SECRETS_BUNDLE" ]; then
 fi
 
 if [ -n "$SECRETS_BUNDLE" ]; then
-	READY="ssh, gh, secretspec and Claude Code are already authenticated."
+	READY="ssh, gh and Claude Code are already authenticated, and any
+   project .env files in the bundle are back in place."
 else
 	READY="No credentials were restored (no --secrets). ssh, gh and Claude
    Code will each need logging in once — see POST-INSTALL.md."

@@ -15,6 +15,12 @@
 # contains nothing secret still holds, and a bundle on a USB stick is a thing
 # you can physically destroy.
 #
+# It carries two kinds of thing. Credentials, at fixed paths, listed in PATHS.
+# And project .env files, which are found rather than listed because they live
+# wherever the projects do. Those are gitignored by design, which means they
+# exist on exactly one disk and a reinstall is the last time you see them —
+# `list` prints them separately so you always read what you are carrying.
+#
 # ENCRYPTION
 #
 # age in passphrase mode (`age -p`, scrypt). Not a keypair, on purpose: a
@@ -26,9 +32,10 @@
 #
 # ~/.local/share/kwalletd is encrypted with your LOGIN PASSWORD. Restoring it
 # onto a machine where you choose a different password during install leaves a
-# wallet that cannot be opened, and `gh` and secretspec will both come up empty
-# even though the files are present. Use the same password, or plan to re-auth
-# those two.
+# wallet that cannot be opened, and `gh` comes up unauthenticated even though
+# the files are present. Use the same password, or plan to re-run `gh auth
+# login`. The .env files and the SSH key are unaffected — they are plain files
+# and do not go through the wallet.
 set -euo pipefail
 
 # Home-relative paths. Everything here is either a secret or the small amount of
@@ -45,8 +52,9 @@ PATHS=(
 	# the token means anything.
 	.config/gh
 
-	# KWallet. The gh token and every secretspec secret live in here. See the
-	# login-password caveat above.
+	# KWallet. This is where the gh token actually lives — hosts.yml above holds
+	# only the account name. Any secretspec secret would land here too, though
+	# nothing on this system uses secretspec today. Login-password caveat above.
 	.local/share/kwalletd
 
 	# Claude Code: the credential, and the config that records you have already
@@ -57,6 +65,33 @@ PATHS=(
 
 	# Only present if you actually use gpg; skipped with a warning otherwise.
 	.gnupg
+)
+
+# Project .env files are found rather than listed: they live at paths only the
+# projects know, and a fixed list goes stale the first time you start a new one.
+#
+# Only these roots are scanned, and the reason is impermanence rather than
+# speed. A restored file is written to /persistent/userdata/home/<user>/<path>,
+# so it only survives the first boot if <path> is inside a persisted directory.
+# Projects/ and Desktop/ are; anything else in $HOME is not, and carrying a
+# secret to a location that gets wiped is worse than not carrying it.
+ENV_ROOTS=(
+	Projects
+	Desktop
+)
+
+# Excluded from the scan. .git and the build/vendor directories because a match
+# in there belongs to a dependency, not to you; .Trash-* because a deleted
+# project's secrets should stay deleted.
+ENV_PRUNE=(
+	.git
+	.direnv
+	.devenv
+	node_modules
+	.venv
+	__pycache__
+	target
+	'.Trash-*'
 )
 
 die() {
@@ -77,31 +112,84 @@ run_age() {
 	fi
 }
 
-# Populates PRESENT and MISSING from PATHS.
+# Home-relative paths of every project .env found under ENV_ROOTS.
+#
+# .env.example and friends are excluded: they are templates with placeholder
+# values, they are committed to the repo already, and including them would put
+# the word "example" next to real secrets in the bundle listing, which is
+# exactly the confusion you do not want when auditing what you are carrying.
+discover_env_files() {
+	ENV_FILES=()
+	local root f prune=()
+	# Build the -prune expression: ( -name a -o -name b -o ... )
+	local p first=1
+	for p in "${ENV_PRUNE[@]}"; do
+		if [ "$first" = 1 ]; then
+			prune=(-name "$p")
+			first=0
+		else
+			prune+=(-o -name "$p")
+		fi
+	done
+
+	for root in "${ENV_ROOTS[@]}"; do
+		[ -d "$HOME/$root" ] || continue
+		while IFS= read -r -d '' f; do
+			ENV_FILES+=("${f#"$HOME/"}")
+		done < <(
+			find "$HOME/$root" -maxdepth 6 \
+				\( "${prune[@]}" \) -prune -o \
+				\( -type f \( -name '.env' -o -name '.env.*' \) \
+				! -name '*.example' ! -name '*.sample' ! -name '*.template' \) \
+				-print0 2>/dev/null
+		)
+	done
+}
+
+# Populates FIXED_PRESENT, MISSING, ENV_FILES and the combined PRESENT.
 scan() {
-	PRESENT=()
+	FIXED_PRESENT=()
 	MISSING=()
 	local p
 	for p in "${PATHS[@]}"; do
 		if [ -e "$HOME/$p" ]; then
-			PRESENT+=("$p")
+			FIXED_PRESENT+=("$p")
 		else
 			MISSING+=("$p")
 		fi
 	done
+	discover_env_files
+	PRESENT=(
+		${FIXED_PRESENT[@]+"${FIXED_PRESENT[@]}"}
+		${ENV_FILES[@]+"${ENV_FILES[@]}"}
+	)
 }
 
 cmd_list() {
 	scan
-	say "Would be included"
-	if [ "${#PRESENT[@]}" -eq 0 ]; then
+	local p
+
+	say "Credentials"
+	if [ "${#FIXED_PRESENT[@]}" -eq 0 ]; then
 		note "(nothing — is this the right account?)"
 	else
-		local p
-		for p in "${PRESENT[@]}"; do
-			printf '      %-32s %s\n' "$p" "$(du -sh "$HOME/$p" 2>/dev/null | cut -f1)"
+		for p in "${FIXED_PRESENT[@]}"; do
+			printf '      %-40s %s\n' "$p" "$(du -sh "$HOME/$p" 2>/dev/null | cut -f1)"
 		done
 	fi
+
+	# Listed separately and never folded into the count above: these are found,
+	# not declared, so the only way to know what you are about to carry is to
+	# read them off. Check this list before every `create`.
+	say "Project .env files (found under: ${ENV_ROOTS[*]})"
+	if [ "${#ENV_FILES[@]}" -eq 0 ]; then
+		note "(none found)"
+	else
+		for p in "${ENV_FILES[@]}"; do
+			printf '      %-40s %s\n' "$p" "$(du -sh "$HOME/$p" 2>/dev/null | cut -f1)"
+		done
+	fi
+
 	if [ "${#MISSING[@]}" -gt 0 ]; then
 		say "Not present on this machine, will be skipped"
 		printf '      %s\n' "${MISSING[@]}"
