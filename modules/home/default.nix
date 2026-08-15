@@ -315,7 +315,7 @@ in
   home.sessionVariables = {
     EDITOR = "code --wait";
     # Relocates .claude.json into ~/.claude, which is a persisted directory
-    # (configuration.nix). Left unset, that file lives loose in the home root
+    # (modules/nixos/impermanence.nix). Left unset, it lives loose in the home root
     # and does not survive a reboot. Verified against claude-code 2.1.228:
     # with this set, the json is created inside the directory, not beside it.
     CLAUDE_CONFIG_DIR = "/home/${user}/.claude";

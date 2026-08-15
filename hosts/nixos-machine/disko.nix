@@ -12,13 +12,20 @@
 # ONE passphrase, total. cryptroot is unlocked by passphrase in the initrd;
 # cryptdata is unlocked after switch-root from a keyfile that lives on the
 # already-decrypted /persistent (see environment.etc.crypttab in
-# configuration.nix). Swap needs no key at all — with hibernation off, its
-# contents are worthless after power-off, so a fresh random key each boot is
-# both simpler and strictly more secure than a stored one.
+# modules/nixos/impermanence.nix). Swap needs no key at all — with hibernation
+# off, its contents are worthless after power-off, so a fresh random key each
+# boot is both simpler and strictly more secure than a stored one.
 #
-# The two CHANGE_ME device paths are rewritten by installer.sh from the disk
-# you pick. They are /dev/disk/by-id/* deliberately: nvme0n1 and nvme1n1 can
-# swap names between boots, by-id cannot.
+# The device paths are THIS machine's, written here by installer.sh when it
+# created this host directory. They are /dev/disk/by-id/* deliberately: nvme0n1
+# and nvme1n1 can swap names between boots, by-id cannot. Another machine gets
+# its own hosts/<name>/disko.nix; this file is never rewritten in place, which
+# is the bug the hosts/ split exists to remove.
+#
+# The names below are load-bearing, not cosmetic: the LUKS container MUST be
+# `cryptroot`, the subvolumes MUST be @root/@nix/@persistent, and the data
+# partition MUST be disk `data`, partition `cryptdata`. modules/nixos names all
+# four — the initrd rollback unit and /etc/crypttab find them by those names.
 let
   btrfsMountOptions = [
     "noatime"
