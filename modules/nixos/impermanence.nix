@@ -74,6 +74,18 @@ in
 
   systemd.tmpfiles.rules = [
     "d ${cfg.secretsDir} 0700 root root -"
+    # /etc/nixos is a bind mount of this path, and nixos-install leaves it
+    # root-owned. That is a per-machine chore rather than a security boundary:
+    # `nh os switch` refuses to run as root, and every commit here is yours, so
+    # root ownership means either a manual chown on each new machine or
+    # `sudo git -c user.name=... ` forever. Declaring it means a fresh install
+    # comes up already usable. The tradeoff is the one POST-INSTALL always
+    # described — anything running as you can edit the system config without a
+    # password — and it was already being made by hand.
+    #
+    # Mode column is `-`: recurse ownership, leave permissions alone, so the
+    # 0600s inside .git stay 0600.
+    "Z /persistent/system/etc/nixos - ${user} ${config.users.users.${user}.group} -"
   ];
 
   environment.persistence."/persistent/system" = {

@@ -3,7 +3,7 @@
 #
 # Run from a NixOS live ISO, as root, from inside a clone of this repo:
 #
-#     sudo ./installer.sh [hostname]
+#     sudo ./installer.sh [hostname] [--secrets /path/to/secrets.age]
 #
 # Two paths, and which one you get depends only on whether hosts/<hostname>/
 # already exists:
@@ -21,6 +21,12 @@
 # and the placeholder substitution silently matched nothing, so a second run on
 # a different machine would have formatted whatever the first machine's disks
 # were called. Host directories exist to make that unrepresentable.
+#
+# --secrets restores the bundle built by secrets-bundle.sh: SSH key, gh account,
+# KWallet, Claude Code credential. With it the machine is usable the moment it
+# boots; without it you get a correctly configured machine that is logged in to
+# nothing. Everything else in this repo is declarative, but credentials cannot
+# be — no amount of Nix produces a private key GitHub already trusts.
 #
 # DESTRUCTIVE. Every disk named in hosts/<hostname>/disko.nix is repartitioned.
 # Nothing is backed up.
@@ -50,12 +56,57 @@ ask() {
 git_() { git -c safe.directory="$FLAKE_DIR" -C "$FLAKE_DIR" "$@"; }
 have_git() { [ -d "$FLAKE_DIR/.git" ] && command -v git >/dev/null 2>&1; }
 
+# The live ISO has no age. Same fallback shape as hash_password below.
+run_age() {
+	if command -v age >/dev/null 2>&1; then
+		age "$@"
+	else
+		nix "${NIX_FLAGS[@]}" shell nixpkgs#age -c age "$@"
+	fi
+}
+
+# ── Arguments ────────────────────────────────────────────────────────────
+SECRETS_BUNDLE=""
+POSITIONAL=()
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--secrets)
+		SECRETS_BUNDLE="${2-}"
+		[ -n "$SECRETS_BUNDLE" ] || die "--secrets needs a path"
+		shift 2
+		;;
+	--secrets=*)
+		SECRETS_BUNDLE="${1#*=}"
+		shift
+		;;
+	-h | --help)
+		sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed 's/^# \?//;$d'
+		exit 0
+		;;
+	-*)
+		die "unknown option: $1"
+		;;
+	*)
+		POSITIONAL+=("$1")
+		shift
+		;;
+	esac
+done
+set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
+
 # ── Preflight ────────────────────────────────────────────────────────────
 [ "$(id -u)" -eq 0 ] || die "must run as root (sudo ./installer.sh)"
 [ -d /sys/firmware/efi ] || die "not booted in UEFI mode — this layout is GPT/ESP only"
 for f in flake.nix identity.nix modules/nixos/default.nix templates/host/default.nix; do
 	[ -e "$FLAKE_DIR/$f" ] || die "$f missing — run this script from inside the config directory"
 done
+
+# Checked here rather than at restore time, which is after the disks are gone.
+# A typo'd USB path should cost you a retry, not an install.
+if [ -n "$SECRETS_BUNDLE" ]; then
+	[ -f "$SECRETS_BUNDLE" ] || die "--secrets $SECRETS_BUNDLE is not a file"
+	[ -s "$SECRETS_BUNDLE" ] || die "--secrets $SECRETS_BUNDLE is empty"
+fi
 
 # A flake only sees git-tracked files. An untracked host directory evaluates to
 # nothing, or fails — either way you find out after the disk is gone. Checked
@@ -234,6 +285,13 @@ CONFIRM="$(ask "  Type ERASE $HOST to continue")"
 USER_NAME="$(sed -n 's/^[[:space:]]*user[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$FLAKE_DIR/identity.nix")"
 [ -n "$USER_NAME" ] || die "could not read the user name out of identity.nix"
 say "Password for user '$USER_NAME'"
+if [ -n "$SECRETS_BUNDLE" ]; then
+	note "The bundle contains KWallet, which is encrypted with your LOGIN"
+	note "PASSWORD. Type the SAME password you use on the machine the bundle"
+	note "came from, or the wallet will restore intact and refuse to open —"
+	note "and gh and secretspec will both come up with no secrets."
+	echo
+fi
 hash_password() {
 	if command -v mkpasswd >/dev/null 2>&1; then
 		mkpasswd -m sha-512
@@ -322,6 +380,41 @@ if [ "$NEEDS_DATA_KEY" = true ]; then
 	shred -u /tmp/cryptdata.key 2>/dev/null || rm -f /tmp/cryptdata.key
 fi
 
+# ── Credential bundle ────────────────────────────────────────────────────
+# AFTER nixos-install on purpose: the user does not exist until activation has
+# run, and the restored files need that user's real uid rather than a guessed
+# 1000. Impermanence maps ~/x to /persistent/userdata/home/<user>/x, so the
+# bundle — which is a tar of home-relative paths — unpacks straight into there.
+if [ -n "$SECRETS_BUNDLE" ]; then
+	say "Restoring credentials from $(basename "$SECRETS_BUNDLE")"
+
+	USER_HOME="/mnt/persistent/userdata/home/$USER_NAME"
+	install -d -m 0700 "$USER_HOME"
+
+	note "age will ask for the bundle passphrase"
+	# -p preserves the modes inside the tar, so .ssh comes back 0700 with 0600
+	# keys rather than inheriting this script's umask.
+	run_age -d "$SECRETS_BUNDLE" | tar -xpf - -C "$USER_HOME"
+
+	# nixos-install has created the user by now, so this is the authoritative
+	# uid rather than an assumption about it being 1000.
+	RESTORE_UID="$(awk -F: -v u="$USER_NAME" '$1 == u { print $3 }' /mnt/etc/passwd)"
+	RESTORE_GID="$(awk -F: -v u="$USER_NAME" '$1 == u { print $4 }' /mnt/etc/passwd)"
+	[ -n "$RESTORE_UID" ] && [ -n "$RESTORE_GID" ] ||
+		die "restored the bundle but '$USER_NAME' is not in /mnt/etc/passwd — cannot set ownership.
+       The files are in $USER_HOME and are owned by root. Fix before rebooting."
+	chown -R "$RESTORE_UID:$RESTORE_GID" "$USER_HOME"
+
+	note "restored as uid $RESTORE_UID:$RESTORE_GID into $USER_HOME"
+fi
+
+if [ -n "$SECRETS_BUNDLE" ]; then
+	READY="ssh, gh, secretspec and Claude Code are already authenticated."
+else
+	READY="No credentials were restored (no --secrets). ssh, gh and Claude
+   Code will each need logging in once — see POST-INSTALL.md."
+fi
+
 cat <<EOF
 
   ────────────────────────────────────────────────────────────────────
@@ -330,12 +423,15 @@ cat <<EOF
    At boot you get ONE passphrase prompt (the disk), then SDDM (your
    user password).
 
+   $READY
+
+   /etc/nixos is owned by $USER_NAME from the first boot, so git and
+   nh work without sudo.
+
    hosts/$HOST/ is staged but NOT committed. Commit it from the
    installed system so this machine is reproducible next time:
 
      cd /etc/nixos && git add -A && git commit -m "add host $HOST"
-
-   Then read POST-INSTALL.md — it is at /etc/nixos/POST-INSTALL.md.
   ────────────────────────────────────────────────────────────────────
 
 EOF

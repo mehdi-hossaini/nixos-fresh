@@ -51,6 +51,11 @@
     # project in Projects/ and uv is also how one-off Python CLIs get run.
     uv
 
+    # Encrypts the credential bundle that secrets-bundle.sh builds and
+    # installer.sh --secrets restores. Passphrase mode only (`age -p`), so
+    # there is no key to bootstrap before you can read your own keys.
+    age
+
     # Nix tooling
     nh
     nixd

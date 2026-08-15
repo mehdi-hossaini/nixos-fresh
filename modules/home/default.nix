@@ -312,6 +312,20 @@ in
     enableFishIntegration = true;
   };
 
+  # `secretspec config init` writes exactly this file and nothing else: a
+  # provider and a profile, no secrets of any kind. It was a post-install step
+  # only because nobody had declared it. `keyring` means KWallet, which Plasma
+  # already provides and which your login password already unlocks.
+  #
+  # The cost is the same one programs.git pays above — this becomes a read-only
+  # store symlink, so `secretspec config init` can no longer rewrite it. Change
+  # the provider here instead of with the CLI.
+  xdg.configFile."secretspec/config.toml".text = ''
+    [defaults]
+    provider = "keyring"
+    profile = "development"
+  '';
+
   home.sessionVariables = {
     EDITOR = "code --wait";
     # Relocates .claude.json into ~/.claude, which is a persisted directory

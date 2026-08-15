@@ -1,22 +1,16 @@
 # After first boot
 
-Six steps, about 10 minutes. Do them in order — both 0 and 4 need the
-authentication from 3, which needs the key from 2.
+How much there is to do depends entirely on whether you installed with
+`--secrets`:
 
-## 0. Make this repo private again — DO THIS FIRST
-
-It was flipped public so the live ISO could `git clone` it without
-authenticating. Nothing secret is in it (the password hash and the LUKS keyfile
-are generated at install time and never enter git), but public was a temporary
-convenience, not a decision.
-
-```sh
-gh repo edit mehdi-hossaini/nixos-fresh --visibility private \
-  --accept-visibility-change-consequences
-```
-
-This needs `gh auth login` first — so in practice: do step 2 and 3, then come
-straight back here.
+| | with `--secrets` | without |
+|---|---|---|
+| SSH key | already there | generate + register with GitHub |
+| `gh` login | already there | `gh auth login` |
+| Claude Code login | already there | log in once |
+| secretspec | declared, nothing to do | declared, nothing to do |
+| `/etc/nixos` ownership | automatic | automatic |
+| **Total** | **steps 1–3, ~3 min** | **steps 1–3 plus "Logging in by hand"** |
 
 ## 1. Confirm impermanence actually works
 
@@ -46,53 +40,14 @@ ls /mnt/btrfs/old_roots/
 sudo umount /mnt/btrfs
 ```
 
-## 2. SSH key
-
-```sh
-ssh-keygen -t ed25519 -C "littlemehti@gmail.com"
-cat ~/.ssh/id_ed25519.pub
-```
-
-Add it at <https://github.com/settings/keys>.
-
-## 3. GitHub CLI
-
-```sh
-gh auth login          # choose SSH, it will find the key from step 2
-gh auth status
-```
-
-## 4. Commit this machine's host directory
+## 2. Commit this machine's host directory
 
 `installer.sh` copied the whole clone to `/persistent/system/etc/nixos`,
 **including `.git`** — so `/etc/nixos` is already the repo you installed from,
-with its history and its remote. There is nothing to graft. What is *not* done
-is the commit for this machine: the installer stages `hosts/<hostname>/` and
-stops there, because a host directory describing hardware you have not booted
-yet is not worth committing.
-
-First take ownership, so `git` and `gh` use your SSH key from step 2 rather than
-root's, which does not exist:
-
-```sh
-sudo chown -R mehti:users /etc/nixos
-```
-
-That trades a little safety — anything running as you can now edit the system
-config without a password — for a workflow that actually functions. The
-alternative is keeping it root-owned and passing your key explicitly to every
-push with `sudo git -c core.sshCommand='ssh -i ~/.ssh/id_ed25519'`, which gets
-old fast.
-
-If the ISO cloned over HTTPS, point the remote at SSH so pushes use that key:
-
-```sh
-cd /etc/nixos
-git remote -v                                                    # check first
-git remote set-url origin git@github.com:mehdi-hossaini/nixos-fresh.git
-```
-
-Then commit the host:
+with its history and its remote, and a tmpfiles rule has already made it yours.
+No chown, no grafting. What is *not* done is the commit for this machine: the
+installer stages `hosts/<hostname>/` and stops, because a host directory
+describing hardware you have not booted yet is not worth committing.
 
 ```sh
 cd /etc/nixos
@@ -101,39 +56,99 @@ git commit -m "add host $(hostname)"
 git push
 ```
 
-Once `/etc/nixos` is yours, the `safe.directory` line in `modules/home/default.nix`
-is no longer load-bearing. Leave it — it costs nothing and covers you if
-ownership ever reverts to root.
-
-## 5. secretspec
+If the ISO cloned over HTTPS, point the remote at SSH first so the push uses
+your key:
 
 ```sh
-secretspec config init      # pick `keyring` — KWallet already provides it
+git remote -v
+git remote set-url origin git@github.com:mehdi-hossaini/nixos-fresh.git
 ```
 
-Per project: `secretspec init` writes a `secretspec.toml` next to `devenv.nix`.
+## 3. Make the repo private again
 
-## 6. Rust projects
+It was flipped public so the live ISO could `git clone` it without
+authenticating. Nothing secret is in it — the password hash and the LUKS keyfile
+are generated at install time, and credentials travel in the bundle, never in
+git — but public was a temporary convenience, not a decision.
 
-There is deliberately **no system-wide `rustc` or `cargo`**. Toolchains are
-per-project, so two projects can disagree about versions. In each repo:
-
-```nix
-# devenv.nix
-{ pkgs, ... }:
-{
-  languages.rust = {
-    enable = true;
-    channel = "stable";      # or read rust-toolchain.toml via toolchainFile
-    mold.enable = true;      # the linker — biggest single build-time win
-  };
-}
+```sh
+gh repo edit mehdi-hossaini/nixos-fresh --visibility private \
+  --accept-visibility-change-consequences
 ```
 
-Then `echo "use devenv" > .envrc && direnv allow`.
+---
 
-`sccache` and `CARGO_BUILD_JOBS` are set system-wide and apply inside devenv
-shells automatically.
+# Logging in by hand
+
+Only needed if you installed **without** `--secrets`.
+
+```sh
+# SSH key — the old one died with the disk
+ssh-keygen -t ed25519 -C "littlemehti@gmail.com"
+cat ~/.ssh/id_ed25519.pub          # paste at https://github.com/settings/keys
+
+# GitHub CLI — choose SSH, it will find the key above
+gh auth login
+gh auth status
+
+# Claude Code
+claude          # follow the login prompt
+```
+
+Then build a bundle so the next machine skips all of this.
+
+# The credential bundle
+
+Everything in this repo is declarative except credentials, which cannot be: no
+amount of Nix produces a private key GitHub already trusts. `secrets-bundle.sh`
+is how they travel.
+
+```sh
+./secrets-bundle.sh list                                  # what would go in
+./secrets-bundle.sh create /run/media/$USER/USB/secrets.age
+```
+
+It tars `~/.ssh`, `~/.config/gh`, `~/.local/share/kwalletd` (which is where the
+`gh` token and every secretspec secret actually live), the Claude Code
+credential and `~/.gnupg`, then encrypts with `age -p` — a passphrase, not a
+keypair, because a keypair would need its own private key delivered to the new
+machine first, which is the problem the bundle exists to solve.
+
+Restore it at install time:
+
+```sh
+sudo ./installer.sh <hostname> --secrets /path/to/secrets.age
+```
+
+The installer unpacks it into `/persistent/userdata/home/<user>/` **after**
+`nixos-install`, so it can read the real uid out of `/mnt/etc/passwd` rather
+than assuming 1000, and file modes survive the round trip — `.ssh` comes back
+0700 with 0600 keys.
+
+**Use the same login password.** KWallet is encrypted with it. Restore the
+wallet onto a machine with a different password and it will sit there intact and
+unopenable, with `gh` and secretspec both reporting no secrets. The installer
+warns about this at the password prompt.
+
+**Keep the bundle on removable media.** It is every credential you have, and
+`age -p` has no recovery if you forget the passphrase.
+
+**Refresh it when credentials change** — a rotated SSH key or a re-auth'd `gh`
+makes the old bundle stale. `create` refuses to overwrite an existing file, so
+retiring one is a deliberate act.
+
+# What is still not automatic, and why
+
+- **Plasma look and feel.** `~/.config` is persisted but not declared, and
+  `plasma-manager` is in the "not installed, on purpose" list. A fresh machine
+  gets stock Plasma. Reverse that decision by adding `plasma-manager` if it ever
+  stops being worth the manual setup.
+- **VS Code extensions.** `~/.vscode` is persisted, so this only bites on brand
+  new hardware, where you install the Claude Code extension once from the
+  marketplace. Declaring it from nixpkgs would pin an older version and fight
+  the extension's own updater.
+- **Registering a *new* SSH key with GitHub.** Unavoidable when you generate one
+  rather than carry it — GitHub has to be told, and only you can tell it.
 
 ---
 
@@ -150,7 +165,8 @@ hosts/<name>/      ONE MACHINE. The only place allowed to name a disk,
 modules/nixos/     everything true on every machine
 modules/home/      home-manager, same
 templates/host/    what installer.sh copies to make a new hosts/<name>/
-installer.sh
+installer.sh       install; --secrets restores the bundle
+secrets-bundle.sh  build the bundle
 ```
 
 The directory name under `hosts/` **is** the hostname — `flake.nix` sets
@@ -178,7 +194,7 @@ Adding RAM means editing one number.
 From a NixOS live ISO, as root, inside a clone of this repo:
 
 ```sh
-sudo ./installer.sh <new-hostname>
+sudo ./installer.sh <new-hostname> --secrets /path/to/secrets.age
 ```
 
 If `hosts/<new-hostname>/` does not exist, the installer asks for a layout
@@ -205,6 +221,7 @@ Commit the new `hosts/<name>/` afterwards and the machine is reproducible.
 | Run something on the dGPU | `nvidia-offload <cmd>` (nixos-machine only) |
 | Check the dGPU is asleep | `cat /sys/bus/pci/devices/0000:01:00.0/power/runtime_status` |
 | Format | `nixfmt` — everything but `hardware-configuration.nix`, which is generated |
+| Refresh credentials | `./secrets-bundle.sh create <path>` |
 
 # Things you will want to change
 
@@ -239,6 +256,10 @@ machine needs the block in `hosts/nixos-machine/default.nix`, bus IDs adjusted.
 
 **Alacritty has no tabs.** If that grates, `programs.alacritty` → `programs.kitty`
 in `modules/home/default.nix` is a two-line change.
+
+**secretspec provider.** Declared in `modules/home/default.nix`, which makes
+`~/.config/secretspec/config.toml` a read-only store symlink — `secretspec
+config init` can no longer rewrite it. Change it there instead.
 
 # Not installed, on purpose
 
