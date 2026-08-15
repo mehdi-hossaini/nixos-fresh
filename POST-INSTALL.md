@@ -144,20 +144,66 @@ The directory name under `hosts/` **is** the hostname — `flake.nix` sets
 exists and `nh os switch` can always find it. Renaming a machine is renaming
 its directory.
 
-A host declares three facts about itself in `hosts/<name>/default.nix`:
+# What an install delivers
 
-```nix
-machine = {
-  threads = 12;         # nproc
-  memoryGiB = 14;       # free -g
-  hasDataDisk = true;   # two-disk layout?
-};
-```
+## Identical on every machine — `modules/`
 
-`nix.settings.max-jobs`, `nix.settings.cores`, `CARGO_BUILD_JOBS`,
-`zramSwap.memoryPercent` and the `/etc/crypttab` entry are all derived from
-those — see `modules/nixos/machine.nix` for the reasoning behind each formula.
+| Area | What the installed system has |
+|---|---|
+| **Disk** | GPT + 2G ESP, LUKS on root, btrfs with zstd:1, `noatime`, `discard=async`, `commit=120` |
+| **Encryption** | One passphrase at boot. Root unlocked in initrd; data disk (if any) unlocked after switch-root from a keyfile on the encrypted root, so no key sits on the ESP |
+| **Boot** | systemd-boot, 10 generations, systemd in initrd, `quiet loglevel=3 nowatchdog`, `/tmp` on disk (never tmpfs) |
+| **Root filesystem** | Impermanent — `@root` wiped and re-snapshotted from `@root-blank` every boot, outgoing root kept 7 days in `old_roots/` |
+| **Persisted (system)** | `/etc/nixos`, NM connections + runtime, `/etc/ssh`, `/etc/machine-id`, `/var/log`, `/var/lib/{nixos,bluetooth,systemd,NetworkManager,fwupd,AccountsService}`, `/var/db/sudo` |
+| **Persisted (user)** | `Projects Documents Downloads Pictures Videos Music Desktop`, `.ssh`, `.gnupg`, `.claude`, `.vscode`, `.config`, `.local/{share,state}`, `.cargo`, `.cache/{sccache,nix,mesa_shader_cache,nvidia}` |
+| **Desktop** | KDE Plasma 6 on Wayland, SDDM (Wayland), `hardware.graphics` + 32-bit |
+| **Keyboard** | xkb `se,ir`, caps→escape, alt+shift layout toggle; console `sv-latin1` |
+| **Locale** | `en_US.UTF-8`, `LC_TIME=sv_SE.UTF-8`, `Europe/Stockholm` |
+| **Audio/HW** | pipewire (alsa + 32-bit + pulse), rtkit, bluetooth, fwupd |
+| **Network** | NetworkManager, firewall enabled |
+| **Memory** | zram (zstd, priority 100) over disk swap (priority 0), earlyoom at 5%/10% — protects the session, prefers killing compilers |
+| **User** | `mutableUsers = false`, password hash from `/persistent/system/secrets`, fish shell, groups `wheel networkmanager video audio input`; activation *fails loudly* if the hash file is missing |
+| **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
+| **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
+| **Fonts** | JetBrainsMono Nerd Font, set as default monospace |
+| **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu jjui devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd eza bat fzf jq btop` + nix-ld |
+| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty, bat, fzf |
+| **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=code --wait`, `CLAUDE_CONFIG_DIR` |
+
+## Varies per machine — `hosts/<name>/`
+
+A host declares three facts about itself and the rest is derived:
+
+| Knob | Source | Effect |
+|---|---|---|
+| Hostname | the directory name | also becomes the flake attribute, so `nh os switch` always resolves |
+| Disk devices | `disko.nix`, by-id | validated as real block devices before anything is erased |
+| Layout | `two-disk` or `single-disk` | two-disk adds `/data` + swap on disk 2; single-disk puts swap on the main disk, no `/data` |
+| `machine.threads` | detected via `nproc` | → `nix.settings.cores`, `CARGO_BUILD_JOBS` |
+| `machine.memoryGiB` | detected via `MemTotal` | → `max-jobs` (2 under 24 GiB, else 4), `zramSwap.memoryPercent` (targets ~8 GiB, capped 60) |
+| `machine.hasDataDisk` | from the layout | gates the `/etc/crypttab` entry |
+| GPU | hand-written | template has none — correct for Intel/AMD. NVIDIA needs the PRIME block with bus IDs |
+
+On `nixos-machine` that resolves to `max-jobs 2 × cores 6`, `CARGO_BUILD_JOBS=6`,
+zram 57%. See `modules/nixos/machine.nix` for the reasoning behind each formula.
 Adding RAM means editing one number.
+
+## Still manual after install
+
+| | |
+|---|---|
+| SSH key | generate, then register at <https://github.com/settings/keys> |
+| `gh` login | `gh auth login` (SSH, finds the key) |
+| Claude Code login | once |
+| Project `.env` files | gone with the old disk — they are gitignored, so they exist on one disk only |
+| Commit `hosts/<name>/` | the installer stages it and stops |
+| Plasma look and feel | `.config` persisted but not declared; `plasma-manager` deliberately absent |
+| VS Code extensions | marketplace, once, on brand-new hardware |
+| Per-project devenv | `devenv.nix` + `direnv allow` |
+
+This describes what the config *declares*. Only the `nixos-machine` path has run
+end to end — the `single-disk` template is verified by evaluation, not by an
+install.
 
 # Installing on another machine
 
