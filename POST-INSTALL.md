@@ -1,22 +1,14 @@
 # After first boot
 
-Five steps, about 10 minutes. Do them in order — both 0 and 4 need the
-authentication from 3, which needs the key from 2.
+Five steps, about 10 minutes. Do them in order — 4 needs the authentication
+from 3, which needs the key from 2.
 
-## 0. Make this repo private again — DO THIS FIRST
-
-It was flipped public so the live ISO could `git clone` it without
-authenticating. Nothing secret is in it (the password hash and the LUKS keyfile
-are generated at install time and never enter git), but public was a temporary
-convenience, not a decision.
-
-```sh
-gh repo edit mehdi-hossaini/nixos-fresh --visibility private \
-  --accept-visibility-change-consequences
-```
-
-This needs `gh auth login` first — so in practice: do step 2 and 3, then come
-straight back here.
+The repo is public, deliberately. That is what lets a live ISO `git clone` it
+with no credentials, which is the first thing an install needs and the one
+step that cannot bootstrap itself. Nothing secret is in it: the password hash
+and the LUKS keyfile are both generated at install time onto `/persistent` and
+never enter git. What *is* public is an email address, this machine's disk
+serials in `hosts/nixos-machine/disko.nix`, and every opinion in here.
 
 ## 1. Confirm impermanence actually works
 
@@ -197,7 +189,7 @@ Adding RAM means editing one number.
 | Claude Code login | once |
 | Project `.env` files | gone with the old disk — they are gitignored, so they exist on one disk only |
 | Commit `hosts/<name>/` | the installer stages it and stops |
-| Plasma look and feel | `.config` persisted but not declared; `plasma-manager` deliberately absent |
+| Plasma look and feel | `.config` persisted; only power settings are declared (`modules/home/plasma.nix`), the rest is hand-set |
 | VS Code extensions | marketplace, once, on brand-new hardware |
 | Per-project devenv | `devenv.nix` + `direnv allow` |
 
@@ -275,7 +267,13 @@ in `modules/home/default.nix` is a two-line change.
 # Not installed, on purpose
 
 Steam, OBS, any gaming stack, the CachyOS kernel, Firefox, Konsole, Ghostty,
-`plasma-manager`, and system-wide Rust. Each was a decision, not an oversight.
+and system-wide Rust. Each was a decision, not an oversight.
+
+**`plasma-manager` was on this list and now is not.** It is installed, but
+scoped to powerdevil alone (`modules/home/plasma.nix`) with `overrideConfig`
+left false, so it writes only the keys it names. The rest of Plasma is still
+hand-set and merely persisted — the reason it was excluded in the first place,
+which holds for everything except the power settings.
 
 **secretspec** was here and was removed. It was installed, configured with a
 `keyring` provider, and used by nothing: no `secretspec.toml` existed anywhere,
