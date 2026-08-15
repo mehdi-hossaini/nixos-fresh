@@ -9,7 +9,6 @@ How much there is to do depends entirely on whether you installed with
 | `gh` login | already there | `gh auth login` |
 | Claude Code login | already there | log in once |
 | Project `.env` files | restored | gone with the old disk |
-| secretspec | declared, unused by anything | declared, unused by anything |
 | `/etc/nixos` ownership | automatic | automatic |
 | **Total** | **steps 1–3, ~3 min** | **steps 1–3 plus "Logging in by hand"** |
 
@@ -276,11 +275,16 @@ machine needs the block in `hosts/nixos-machine/default.nix`, bus IDs adjusted.
 **Alacritty has no tabs.** If that grates, `programs.alacritty` → `programs.kitty`
 in `modules/home/default.nix` is a two-line change.
 
-**secretspec provider.** Declared in `modules/home/default.nix`, which makes
-`~/.config/secretspec/config.toml` a read-only store symlink — `secretspec
-config init` can no longer rewrite it. Change it there instead.
-
 # Not installed, on purpose
 
 Steam, OBS, any gaming stack, the CachyOS kernel, Firefox, Konsole, Ghostty,
 `plasma-manager`, and system-wide Rust. Each was a decision, not an oversight.
+
+**secretspec** was here and was removed. It was installed, configured with a
+`keyring` provider, and used by nothing: no `secretspec.toml` existed anywhere,
+its audit log had never been written, and the only command ever run against it
+was `config init`. Project secrets go in gitignored `.env` files loaded by
+direnv's `dotenv_if_exists`, which is what the one devenv project actually does
+and what the bundle now carries. Re-add it if a project ever wants declarative
+secrets across several providers; until then it was a package, a config file and
+three paragraphs of documentation serving nobody.

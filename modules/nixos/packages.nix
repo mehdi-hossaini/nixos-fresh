@@ -37,7 +37,6 @@
     # per-project via devenv's languages.rust (which uses rust-overlay
     # internally), so a system-wide rustc would only shadow them.
     devenv
-    secretspec
     sccache
 
     # Agent toolbelt — the tools a coding agent reaches for via Bash. Structural

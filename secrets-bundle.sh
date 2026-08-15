@@ -53,8 +53,8 @@ PATHS=(
 	.config/gh
 
 	# KWallet. This is where the gh token actually lives — hosts.yml above holds
-	# only the account name. Any secretspec secret would land here too, though
-	# nothing on this system uses secretspec today. Login-password caveat above.
+	# only the account name. Anything else that uses the keyring lands here too.
+	# Login-password caveat above.
 	.local/share/kwalletd
 
 	# Claude Code: the credential, and the config that records you have already
