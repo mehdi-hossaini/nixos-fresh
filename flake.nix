@@ -16,6 +16,16 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Plasma's settings live in ~/.config/*rc, which impermanence already
+    # persists — so this is not about surviving a reboot. It is about surviving
+    # an *install*: a fresh machine otherwise comes up with Plasma's defaults
+    # and every power setting has to be re-clicked by hand.
+    plasma-manager = {
+      url = "github:nix-community/plasma-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };
   };
 
   outputs =

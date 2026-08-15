@@ -144,8 +144,9 @@ in
     # only settings and workspace state. Without this, every reboot is a full
     # extension reinstall.
     ".vscode"
-    # Wholesale, deliberately: Plasma owns its own config and we are not
-    # declaring it. ~/.config/jj rides along here too.
+    # Wholesale, deliberately: Plasma owns its own config and we declare only
+    # the power settings (modules/home/plasma.nix) — everything else it writes
+    # here is yours and unmanaged. ~/.config/jj rides along too.
     ".config"
     ".local/share"
     ".local/state"
