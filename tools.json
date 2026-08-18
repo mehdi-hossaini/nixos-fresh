@@ -1,0 +1,270 @@
+{
+  "$comment": "Inventory of the tools available on this machine, for an agent working over Bash. Derived from modules/nixos/packages.nix + modules/home/default.nix — those files are the source of truth; this one is a reading aid. Deliberately carries no version numbers: run `<tool> --version` instead, which is always current. Update after changing the package lists.",
+  "machine": {
+    "hostname": "nixos-machine",
+    "arch": "x86_64-linux",
+    "cpu_threads": 12,
+    "ram_gb": 14,
+    "shell": "fish (default login shell); bash is present for scripts",
+    "config_repo": "/etc/nixos (git, branch main; owned by the user via tmpfiles — no sudo needed to edit)",
+    "package_sources": [
+      "/run/current-system/sw/bin — system packages (modules/nixos/packages.nix)",
+      "/etc/profiles/per-user/mehti/bin — home-manager programs (modules/home/default.nix)"
+    ],
+    "env": {
+      "EDITOR": "code --wait",
+      "RUSTC_WRAPPER": "sccache",
+      "CARGO_BUILD_JOBS": "6 (derived from machine.buildCores — see modules/nixos/machine.nix)",
+      "CLAUDE_CONFIG_DIR": "/home/mehti/.claude"
+    },
+    "notes": [
+      "Impermanence is enabled: only declared/persisted paths survive a reboot. Do not leave state in the home root.",
+      "Build parallelism is derived from machine.threads and machine.memoryGiB (modules/nixos/machine.nix), not hand-set — this host lands on max-jobs 2 x cores 6 because RAM is the binding constraint. Do not raise it by hand; change machine.memoryGiB and let the formula follow.",
+      "Installing software imperatively does not work here. Add the package to modules/nixos/packages.nix and run `nh os switch /etc/nixos`, or use `nix shell nixpkgs#<pkg>` for a one-off."
+    ]
+  },
+  "tools": [
+    {
+      "name": "rg",
+      "package": "ripgrep",
+      "category": "search",
+      "purpose": "Fast recursive regex search over file contents.",
+      "prefer_over": [
+        "grep -r"
+      ]
+    },
+    {
+      "name": "fd",
+      "package": "fd",
+      "category": "search",
+      "purpose": "Fast file/directory search by name.",
+      "prefer_over": [
+        "find"
+      ]
+    },
+    {
+      "name": "ast-grep",
+      "package": "ast-grep",
+      "category": "search",
+      "purpose": "Structural search and rewrite over a language's AST — use for code patterns that regex handles badly.",
+      "notes": "Invoke as `ast-grep`, never as `sg`. `sg` on this machine resolves to /run/wrappers/bin/sg (util-linux setgid), not ast-grep."
+    },
+    {
+      "name": "jq",
+      "package": "jq",
+      "category": "search",
+      "purpose": "JSON query and transformation."
+    },
+    {
+      "name": "git",
+      "package": "git",
+      "category": "vcs",
+      "purpose": "Version control. Kept because jj uses it as its backend and gh speaks it.",
+      "config": {
+        "init.defaultBranch": "main",
+        "pull.rebase": true,
+        "push.autoSetupRemote": true,
+        "gc.auto": 0,
+        "safe.directory": [
+          "/etc/nixos"
+        ]
+      }
+    },
+    {
+      "name": "jj",
+      "package": "jujutsu",
+      "category": "vcs",
+      "purpose": "Jujutsu VCS over the git backend — colocated repos, no staging area, `jj undo` on any operation.",
+      "notes": "Bare `jj` is configured to show the log. `git.colocate` and `git.track-default-bookmark-on-clone` are already default-true in 0.44; `git.auto-local-bookmark` no longer exists."
+    },
+    {
+      "name": "jjui",
+      "package": "jjui",
+      "category": "vcs",
+      "purpose": "TUI over jj's operation log. Interactive — do not launch from an agent shell."
+    },
+    {
+      "name": "gh",
+      "package": "gh",
+      "category": "vcs",
+      "purpose": "GitHub CLI — PRs, issues, `gh api`.",
+      "notes": "Auth is per-user state; check `gh auth status` before assuming it is logged in."
+    },
+    {
+      "name": "nix",
+      "package": "nix",
+      "category": "nix",
+      "purpose": "Flakes-enabled Nix. `nix shell nixpkgs#<pkg>` for a throwaway tool, `nix build`, `nix flake`."
+    },
+    {
+      "name": "nh",
+      "package": "nh",
+      "category": "nix",
+      "purpose": "NixOS rebuild wrapper: `nh os switch /etc/nixos`, `nh os boot`, `nh clean`.",
+      "notes": "nh declines to run as root — run it as the user. /etc/nixos is user-owned, so that works without sudo; the git safe.directory entry is a leftover guard, no longer load-bearing."
+    },
+    {
+      "name": "nixd",
+      "package": "nixd",
+      "category": "nix",
+      "purpose": "Nix language server (used by the editor, not usually called directly)."
+    },
+    {
+      "name": "statix",
+      "package": "statix",
+      "category": "nix",
+      "purpose": "Nix linter. `statix check <path>`, `statix fix`."
+    },
+    {
+      "name": "nixfmt",
+      "package": "nixfmt",
+      "category": "nix",
+      "purpose": "Official Nix formatter. Run over any .nix file you edit."
+    },
+    {
+      "name": "devenv",
+      "package": "devenv",
+      "category": "dev-env",
+      "purpose": "Per-project development environments (devenv.nix). This is where language toolchains live — including Rust via languages.rust, and mold via languages.rust.mold.enable."
+    },
+    {
+      "name": "direnv",
+      "package": "direnv + nix-direnv",
+      "category": "dev-env",
+      "purpose": "Auto-loads a project's devenv shell on cd. Fish integration is enabled.",
+      "notes": "A non-interactive agent shell may not have the project env loaded — run `direnv exec . <cmd>` if a project tool appears missing."
+    },
+    {
+      "name": "uv",
+      "package": "uv",
+      "category": "dev-env",
+      "purpose": "Python package/project manager. `uv run`, `uv sync`, and `uvx <cli>` for one-off Python CLIs.",
+      "notes": "There is no system-wide python3 on this machine — uv is the only way to get a Python interpreter."
+    },
+    {
+      "name": "sccache",
+      "package": "sccache",
+      "category": "dev-env",
+      "purpose": "Compiler cache. Wired in globally via RUSTC_WRAPPER so devenv shells inherit it.",
+      "notes": "`sccache --show-stats` to confirm cache hits. A cache hit is the cheapest way to survive the RAM ceiling."
+    },
+    {
+      "name": "shellcheck",
+      "package": "shellcheck",
+      "category": "quality",
+      "purpose": "Shell script linter. Run over any sh/bash script you write here."
+    },
+    {
+      "name": "gitleaks",
+      "package": "gitleaks",
+      "category": "quality",
+      "purpose": "Secret scanning. `gitleaks detect` / `gitleaks git` before pushing.",
+      "notes": "This config repo is public — scan before committing anything that touches identity or credentials."
+    },
+    {
+      "name": "bat",
+      "package": "bat",
+      "category": "cli",
+      "purpose": "Pager/cat with syntax highlighting. Use `bat -pp` for plain, non-paged output in scripts."
+    },
+    {
+      "name": "eza",
+      "package": "eza",
+      "category": "cli",
+      "purpose": "Modern ls replacement (`eza -la`, `eza --tree`)."
+    },
+    {
+      "name": "fzf",
+      "package": "fzf",
+      "category": "cli",
+      "purpose": "Fuzzy finder. Interactive — needs a TTY; not useful non-interactively."
+    },
+    {
+      "name": "btop",
+      "package": "btop",
+      "category": "cli",
+      "purpose": "Resource monitor. Interactive TUI — do not launch from an agent shell."
+    },
+    {
+      "name": "zellij",
+      "package": "zellij",
+      "category": "terminal",
+      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks. Can be driven non-interactively via `zellij action` / `zellij run`."
+    },
+    {
+      "name": "alacritty",
+      "package": "alacritty",
+      "category": "terminal",
+      "purpose": "GPU terminal emulator. GUI."
+    },
+    {
+      "name": "code",
+      "package": "vscode",
+      "category": "editor",
+      "purpose": "VS Code. Also the configured EDITOR (`code --wait`) for git and jj.",
+      "notes": "Because EDITOR blocks on a GUI window, avoid commands that open an editor from an agent shell — pass -m/--message instead."
+    },
+    {
+      "name": "claude",
+      "package": "claude-code",
+      "category": "agent",
+      "purpose": "Claude Code CLI.",
+      "notes": "CLAUDE_CONFIG_DIR points at /home/mehti/.claude so its state lands in a persisted directory under impermanence."
+    },
+    {
+      "name": "brave-origin",
+      "package": "brave-origin",
+      "category": "browser",
+      "purpose": "Browser. GUI. Binary is `brave-origin`, not `brave`."
+    },
+    {
+      "name": "fish",
+      "package": "fish",
+      "category": "shell",
+      "purpose": "Default interactive shell.",
+      "notes": "Fish is not POSIX. `&&`/`||` work, but `$(...)` subshell quirks, `export`, and array syntax differ — write scripts for bash and run them with `bash script.sh`."
+    },
+    {
+      "name": "coreutils-and-friends",
+      "package": "base system",
+      "category": "shell",
+      "purpose": "Available: bash, sed, awk, find, xargs, grep, diff, patch, tar, gzip, less, man, curl, ssh, rsync, sudo, systemctl."
+    }
+  ],
+  "not_installed": [
+    {
+      "name": "python3",
+      "workaround": "Use `uv run` / `uvx`. No system interpreter exists."
+    },
+    {
+      "name": "node / npm",
+      "workaround": "Per-project via devenv (`languages.javascript`), or `nix shell nixpkgs#nodejs`."
+    },
+    {
+      "name": "cargo / rustc",
+      "workaround": "Deliberately absent system-wide so it cannot shadow project toolchains. Use devenv's `languages.rust`."
+    },
+    {
+      "name": "gcc / make",
+      "workaround": "Not on PATH outside a nix shell. Use `nix shell nixpkgs#gcc nixpkgs#gnumake` or a devenv shell."
+    },
+    {
+      "name": "docker / podman",
+      "workaround": "Not enabled on this host."
+    },
+    {
+      "name": "wget",
+      "workaround": "curl is installed; use `curl -LO`."
+    },
+    {
+      "name": "unzip",
+      "workaround": "`nix shell nixpkgs#unzip`, or `bsdtar`/`tar` where the format allows."
+    }
+  ],
+  "conventions": [
+    "Never install with a package manager — edit modules/nixos/packages.nix (system) or modules/home/default.nix (user), then `nh os switch /etc/nixos`.",
+    "For a tool needed once, `nix shell nixpkgs#<pkg> -c <cmd>` leaves no trace.",
+    "Format .nix edits with nixfmt and lint with statix before committing — except hosts/*/hardware-configuration.nix, which is generated by nixos-generate-config and must not be hand-edited.",
+    "`nh` and `git` run as the user, never as root. /etc/nixos is already user-owned, so edits need no sudo."
+  ]
+}
