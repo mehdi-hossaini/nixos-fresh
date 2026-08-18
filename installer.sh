@@ -50,12 +50,37 @@ ask() {
 git_() { git -c safe.directory="$FLAKE_DIR" -C "$FLAKE_DIR" "$@"; }
 have_git() { [ -d "$FLAKE_DIR/.git" ] && command -v git >/dev/null 2>&1; }
 
+# The data-disk keyfile is written to /tmp before disko consumes it. On success
+# it is shredded further down, but a failure anywhere between generation and
+# then would otherwise leave it lying there — /tmp on a live ISO is tmpfs, so it
+# dies at reboot either way, but "either way" is not a guarantee worth relying
+# on for a key that unlocks a disk.
+cleanup() {
+	if [ -e /tmp/cryptdata.key ]; then
+		shred -u /tmp/cryptdata.key 2>/dev/null || rm -f /tmp/cryptdata.key
+	fi
+}
+trap cleanup EXIT
+
 # ── Preflight ────────────────────────────────────────────────────────────
 [ "$(id -u)" -eq 0 ] || die "must run as root (sudo ./installer.sh)"
 [ -d /sys/firmware/efi ] || die "not booted in UEFI mode — this layout is GPT/ESP only"
-for f in flake.nix identity.nix modules/nixos/default.nix templates/host/default.nix; do
+# flake.lock is in this list because the disko revision is read out of it below:
+# without it the install is unpinned, which is the one thing this repo exists to
+# prevent.
+for f in flake.nix flake.lock identity.nix modules/nixos/default.nix templates/host/default.nix; do
 	[ -e "$FLAKE_DIR/$f" ] || die "$f missing — run this script from inside the config directory"
 done
+
+# disko, pinned to the SAME revision the installed system gets. Plain
+# `nix run github:nix-community/disko` resolves to whatever HEAD is today, so
+# the CLI that PARTITIONS the disks could be a different version than the module
+# that CONFIGURES them — a drift this script has no way to notice and no way to
+# undo. Read straight out of flake.lock with nix alone; jq is not on every ISO.
+DISKO_REV="$(nix "${NIX_FLAGS[@]}" eval --impure --raw --expr \
+	"(builtins.fromJSON (builtins.readFile \"$FLAKE_DIR/flake.lock\")).nodes.disko.locked.rev")" ||
+	die "could not read the pinned disko revision out of flake.lock"
+disko_run() { nix "${NIX_FLAGS[@]}" run "github:nix-community/disko/$DISKO_REV" -- "$@"; }
 
 # A flake only sees git-tracked files. An untracked host directory evaluates to
 # nothing, or fails — either way you find out after the disk is gone. Checked
@@ -270,14 +295,14 @@ fi
 
 # ── Dry run, then partition ──────────────────────────────────────────────
 say "Dry run (nothing is written)"
-nix "${NIX_FLAGS[@]}" run github:nix-community/disko -- \
-	--mode destroy,format,mount --dry-run "$HOST_DIR/disko.nix" >/dev/null
+note "disko pinned to ${DISKO_REV:0:12} (flake.lock)"
+disko_run --mode destroy,format,mount --dry-run "$HOST_DIR/disko.nix" >/dev/null
 note "layout is valid"
 
 say "Partitioning — you will be asked to SET the disk passphrase now"
-note "(this is the passphrase you will type at every boot)"
-nix "${NIX_FLAGS[@]}" run github:nix-community/disko -- \
-	--mode destroy,format,mount "$HOST_DIR/disko.nix"
+note "(this is the passphrase you will type at every boot, and it is asked"
+note " twice; it is NOT the user password you typed above)"
+disko_run --mode destroy,format,mount "$HOST_DIR/disko.nix"
 
 mountpoint -q /mnt || die "disko finished but /mnt is not mounted"
 
@@ -310,7 +335,12 @@ fi
 # has its remote and its history already — there is nothing to graft afterwards.
 say "Installing config to /persistent/system/etc/nixos"
 install -d -m 0755 /mnt/persistent/system/etc/nixos
-cp -rT "$FLAKE_DIR" /mnt/persistent/system/etc/nixos
+# -a, not -r: `umask 077` is still in effect from the keyfile section above, so
+# a plain copy recreates the whole tree as 0700/0600 and the installed config
+# ends up more locked down than the clone it came from. The tmpfiles rule in
+# modules/nixos/impermanence.nix fixes ownership but deliberately leaves modes
+# alone, so nothing downstream corrects this. -a preserves the source modes.
+cp -aT "$FLAKE_DIR" /mnt/persistent/system/etc/nixos
 
 # ── Install ──────────────────────────────────────────────────────────────
 say "Building and installing (this takes a while)"
@@ -318,9 +348,7 @@ nixos-install \
 	--flake "/mnt/persistent/system/etc/nixos#$HOST" \
 	--no-root-password
 
-if [ "$NEEDS_DATA_KEY" = true ]; then
-	shred -u /tmp/cryptdata.key 2>/dev/null || rm -f /tmp/cryptdata.key
-fi
+# The keyfile is shredded by the EXIT trap, on this path and every failing one.
 
 cat <<EOF
 
