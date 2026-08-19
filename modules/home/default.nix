@@ -347,5 +347,9 @@ in
       source = ../../claude/check-conventions.sh;
       executable = true;
     };
+    # Vendored from github.com/cursor/plugins (pstack/skills/unslop), which
+    # carries no licence file. Kept verbatim and attributed here rather than
+    # reworded, so the provenance stays obvious if that ever needs revisiting.
+    ".claude/skills/unslop/SKILL.md".source = ../../claude/skills/unslop/SKILL.md;
   };
 }
