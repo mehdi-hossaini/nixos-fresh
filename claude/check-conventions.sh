@@ -21,27 +21,36 @@ MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 # a plain file there means someone edited the copy instead of the source.
 DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh")
 
-pass=0; fail=0
-ok()    { printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass+1)); }
-bad()   { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
-note()  { printf '  \033[2mnote\033[0m %s\n' "$1"; }
+pass=0
+fail=0
+ok() {
+  printf '  \033[32mok\033[0m   %s\n' "$1"
+  pass=$((pass + 1))
+}
+bad() {
+  printf '  \033[31mFAIL\033[0m %s\n' "$1"
+  fail=$((fail + 1))
+}
+note() { printf '  \033[2mnote\033[0m %s\n' "$1"; }
 head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 # ── the inventory must be readable before anything can be derived from it ──────
 head_ "Inventory"
 if [ ! -f "$INVENTORY" ]; then
   bad "$INVENTORY missing — CLAUDE.md sends agents there first, and this check derives from it"
-  printf '\n%d ok, %d failed\n' "$pass" "$fail"; exit 1
+  printf '\n%d ok, %d failed\n' "$pass" "$fail"
+  exit 1
 fi
 if ! jq -e . "$INVENTORY" >/dev/null 2>&1; then
   bad "$INVENTORY is not valid JSON — nothing below can be derived"
-  printf '\n%d ok, %d failed\n' "$pass" "$fail"; exit 1
+  printf '\n%d ok, %d failed\n' "$pass" "$fail"
+  exit 1
 fi
 ok "$INVENTORY exists and parses"
 
 # ── schema contracts the derivation depends on ────────────────────────────────
 if jq -e '[.not_installed[] | select((.names | type) != "array" or (.names | length) == 0)] | length == 0' \
-     "$INVENTORY" >/dev/null; then
+  "$INVENTORY" >/dev/null; then
   ok "every not_installed entry has a non-empty names array"
 else
   bad "some not_installed entry is missing names[] — see \$schema_notes in $INVENTORY"
@@ -52,7 +61,7 @@ else
   bad "a not_installed entry still carries .name alongside .names — two copies of one fact"
 fi
 if jq -e '[.tools[] | select(has("commands") and (.commands | type) != "array")] | length == 0' \
-     "$INVENTORY" >/dev/null; then
+  "$INVENTORY" >/dev/null; then
   ok "every tools[].commands is an array where present"
 else
   bad "a tools[].commands is not an array"
@@ -123,8 +132,8 @@ fi
 head_ "Editor guard"
 jj_ui_editor=$(jj config get ui.editor 2>/dev/null || true)
 case "$jj_ui_editor" in
-  *--wait*|*code*) blocking_editor=yes ;;
-  *)               blocking_editor=no  ;;
+*--wait* | *code*) blocking_editor=yes ;;
+*) blocking_editor=no ;;
 esac
 # the guard may come from managed settings (declared, in the repo) or from user
 # settings.json (hand-written) — either satisfies it, managed is the declared one
@@ -135,7 +144,10 @@ for f in "$MANAGED" "$SETTINGS"; do
   for v in JJ_EDITOR GIT_EDITOR EDITOR VISUAL; do
     jq -e --arg v "$v" '.env[$v] // empty' "$f" >/dev/null 2>&1 || all=no
   done
-  [ "$all" = yes ] && { guard_src=$f; break; }
+  [ "$all" = yes ] && {
+    guard_src=$f
+    break
+  }
 done
 if [ -n "$guard_src" ]; then
   ok "JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL pinned for agent sessions (from $guard_src)"
@@ -162,6 +174,25 @@ if [ -f "$MANAGED" ]; then
 else
   bad "$MANAGED missing — the env guard and the nh hook are not declared"
 fi
+
+# ── a project CLAUDE.md narrows; it must not restate this one ────────────────
+# A copy cannot be corrected from here, and a stale copy outranks nothing while
+# looking authoritative. Found one at 64/104 lines, asserting a jj workflow for a
+# directory with no .jj — hence this check.
+head_ "Project instruction files"
+GLOBAL="$HOME/.claude/CLAUDE.md"
+dupes=0
+while read -r p; do
+  [ "$(readlink -f "$p")" = "$(readlink -f "$GLOBAL")" ] && continue
+  case "$p" in *"/.Trash"*) continue ;; esac
+  n=$(grep -Fxf "$GLOBAL" "$p" 2>/dev/null | grep -c '[^[:space:]]' || true)
+  t=$(grep -c '[^[:space:]]' "$p" 2>/dev/null || echo 1)
+  if [ "$n" -gt 10 ]; then
+    bad "$p repeats $n/$t lines of the global file — it should narrow, not restate"
+    dupes=$((dupes + 1))
+  fi
+done < <(fd -H -t f '^CLAUDE\.md$' "$HOME" 2>/dev/null)
+[ "$dupes" -eq 0 ] && ok "no project CLAUDE.md restates the global one"
 
 printf '\n%d ok, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
