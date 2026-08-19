@@ -40,6 +40,22 @@ let
     base0F = "#f28534";
   };
 
+  # A third tier, needed because themeBright moved down into the ANSI normal
+  # slots. Each value is its themeBright counterpart mixed 28% toward base07, so
+  # the hue is unchanged and only the luminance moves. That keeps normal and
+  # bright visibly different, which programs rely on for emphasis, without
+  # inventing colours that are foreign to gruvbox.
+  #
+  # Measured against the window background: 6.20:1 red through 10.74:1 yellow.
+  themeVivid = {
+    base08 = "#fb785d";
+    base0A = "#facb59";
+    base0B = "#caca53";
+    base0C = "#accd91";
+    base0D = "#a0c0ad";
+    base0E = "#dea3a7";
+  };
+
   # Gruvbox's "hard" background, one step darker than base00. Used for the
   # window background *only* — ANSI color0 stays base00. Without this split the
   # two are the same value and black text renders invisible against the
@@ -265,25 +281,34 @@ in
           background = theme.base01;
         };
 
+        # The ANSI normal slots take gruvbox's bright values, not its dark ones.
+        # Measured against this background, the dark set fails where it is read
+        # most: red 3.00:1, magenta 3.87, blue 3.88, all under the 4.5 needed to
+        # read comfortably, and red is what errors and diff removals use. The
+        # bright set clears it everywhere, 4.77:1 at worst. Saturation rises with
+        # the contrast, which is the same change seen from the other side.
+        #
+        # white takes base04 rather than base03: 7.53:1 instead of 4.47:1, and
+        # the grey ladder stays monotonic, base00 < base02 < base04 < base07.
         normal = {
           black = theme.base00;
-          red = theme.base08;
-          green = theme.base0B;
-          yellow = theme.base0A;
-          blue = theme.base0D;
-          magenta = theme.base0E;
-          cyan = theme.base0C;
-          white = theme.base03;
-        };
-
-        bright = {
-          black = theme.base02;
           red = themeBright.base08;
           green = themeBright.base0B;
           yellow = themeBright.base0A;
           blue = themeBright.base0D;
           magenta = themeBright.base0E;
           cyan = themeBright.base0C;
+          white = theme.base04;
+        };
+
+        bright = {
+          black = theme.base02;
+          red = themeVivid.base08;
+          green = themeVivid.base0B;
+          yellow = themeVivid.base0A;
+          blue = themeVivid.base0D;
+          magenta = themeVivid.base0E;
+          cyan = themeVivid.base0C;
           white = theme.base07;
         };
 
