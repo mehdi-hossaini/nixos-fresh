@@ -1,31 +1,30 @@
 # Global conventions (NixOS, single user)
 
-**A missing tool is a decision, not a breakage.** `command not found` on this machine
-almost always means the absence is deliberate — usually to stop a system copy shadowing
-a project's pinned toolchain. Do not try to install your way out of it. Look the tool up
-in `/etc/nixos/tools.json`, which carries every tool, its traps, and — under
-`not_installed` — what to use instead.
+Five laws. Everything below is a consequence of them — when a situation is not covered,
+derive it from here rather than guessing.
 
-That file is the **inventory**; this one is the **rules**. Where the two disagree the
-inventory wins, and `bash ~/.claude/check-conventions.sh` is what says so: it derives
-its expectations from the inventory and verifies them against the live machine. Never
-transcribe version numbers from either — run `<tool> --version`.
+1. **Nothing is installed imperatively.** Persistent → `/etc/nixos`, then `nh os
+   switch`. One-off → `nix shell nixpkgs#<pkg> -c`. Per-project → `devenv.nix`.
+2. **A missing tool is a decision, not a breakage.** `command not found` means the
+   absence is deliberate — usually so a system copy cannot shadow a project's pinned
+   toolchain. Look it up in the inventory; never install around it.
+3. **No prompt can be answered.** No terminal, no display: an editor, a password, a TUI
+   or an askpass dialog fails or hangs rather than waiting. Known instances are `EDITOR`
+   (pinned to `false`), `sudo` behind `nh os switch`, and git askpass on an HTTPS remote
+   (use SSH remotes). Assume there are others. Work to the last step that needs no
+   answer, then hand over.
+4. **Rules are declared; state is not.** `~/.claude/CLAUDE.md` and
+   `check-conventions.sh` are read-only store symlinks — edit `/etc/nixos/claude/` and
+   rebuild. The editor guard and the convention hook live in that directory's
+   `managed-settings.json`, wired by `modules/nixos/claude.nix`. Only
+   `~/.claude/settings.json` is writable in place; it holds state (theme), not rules.
+5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
+   paths outlive a reboot. Use the session scratchpad, never the home root.
 
-**This file is declared, not hand-written.** `~/.claude/CLAUDE.md` and
-`~/.claude/check-conventions.sh` are read-only symlinks into the nix store; writing to
-them fails. Edit the source in `/etc/nixos/claude/`, then rebuild. The same holds for
-the agent-session editor guard and the convention hook, which live in
-`/etc/nixos/claude/managed-settings.json` and reach Claude Code as managed settings via
-`modules/nixos/claude.nix`. Only `~/.claude/settings.json` is yours to edit in place —
-it carries state (theme), not rules.
-
-**No prompt can be answered.** An agent shell has no terminal and no display, so
-anything that stops to ask — an editor, a password, a TUI, an askpass dialog — fails or
-hangs instead of waiting. The known instances: `EDITOR` (pinned to `false`, see below),
-`sudo` behind `nh os switch`, and git's askpass on an HTTPS remote (avoided by using SSH
-remotes — `gh auth status` reports ssh as the configured protocol). Assume there are
-others not yet found. Take the work to the last step that needs no answer, then hand
-over: a clean build, a staged commit, a command the user can paste.
+`/etc/nixos/tools.json` is the **inventory**; this file is the **rules**. Where the two
+disagree the inventory wins, and `bash ~/.claude/check-conventions.sh` is what says so:
+it derives its expectations from the inventory and verifies them against the live
+machine. Never transcribe version numbers from either — run `<tool> --version`.
 
 ## Version control: jj in front, git behind
 
@@ -120,10 +119,9 @@ A new project needs `devenv.nix`, an `.envrc` containing `use devenv`, and one
 For a tool needed once, and nowhere else: `nix shell nixpkgs#<pkg> -c <cmd>` — it
 leaves nothing behind.
 
-Software is never installed imperatively on this machine. Anything that should
-persist goes in `/etc/nixos` (`modules/nixos/packages.nix` for system,
-`modules/home/default.nix` for user) followed by `nh os switch /etc/nixos`, run as
-the user — `nh` refuses to run as root.
+Law 1 in practice: system packages go in `modules/nixos/packages.nix`, user ones in
+`modules/home/default.nix`, then `nh os switch /etc/nixos` as the user — `nh` refuses
+to run as root.
 
 **Editing needs no sudo; activating does.** `/etc/nixos` is user-owned, so change and
 `nh os build /etc/nixos` freely — the build proves the config evaluates and prints the
@@ -143,5 +141,4 @@ switch to the user. New files must be `git add`ed first or the flake cannot see 
 - Do not launch interactive TUIs from an agent shell — `jjui`, `btop`, `fzf` and
   `zellij attach` among them; the inventory flags the rest in its `purpose` notes.
   `zellij action` / `zellij run` are scriptable.
-- **Impermanence is on.** Only declared or persisted paths survive a reboot. Do not
-  leave state loose in the home directory; use the session scratchpad.
+- Persisted paths are listed in `modules/nixos/impermanence.nix` (law 5).
