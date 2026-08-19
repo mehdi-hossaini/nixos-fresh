@@ -1,5 +1,11 @@
 {
   "$comment": "Inventory of the tools available on this machine, for an agent working over Bash. Derived from modules/nixos/packages.nix + modules/home/default.nix — those files are the source of truth; this one is a reading aid. Deliberately carries no version numbers: run `<tool> --version` instead, which is always current. Update after changing the package lists.",
+  "$schema_notes": [
+    "This file is checked mechanically by ~/.claude/check-conventions.sh — keep these contracts true or the check fails.",
+    "tools[].commands — the executables the entry puts on PATH. Omitted means `[name]`. An empty array means the entry ships no binary under its own name (a bundle or a library).",
+    "tools[].package — the nixpkgs attribute or home-manager program name. Must appear in modules/nixos/packages.nix or modules/home/default.nix. null means it is not separately declared (base system).",
+    "not_installed[].names — every command the entry covers, one per element. This is the machine-readable field; there is no `name` here on purpose, so the list cannot drift from its prose."
+  ],
   "machine": {
     "hostname": "nixos-machine",
     "arch": "x86_64-linux",
@@ -12,7 +18,7 @@
       "/etc/profiles/per-user/mehti/bin — home-manager programs (modules/home/default.nix)"
     ],
     "env": {
-      "EDITOR": "code --wait",
+      "EDITOR": "code --wait — interactive sessions only. Agent sessions pin JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL to `false` via ~/.claude/settings.json, so a command that would open an editor fails fast instead of hanging on a GUI window. That guard does not cover jj's diff editor (jj split/diffedit/resolve), which is a builtin TUI.",
       "RUSTC_WRAPPER": "sccache",
       "CARGO_BUILD_JOBS": "6 (derived from machine.buildCores — see modules/nixos/machine.nix)",
       "CLAUDE_CONFIG_DIR": "/home/mehti/.claude"
@@ -129,14 +135,18 @@
     },
     {
       "name": "direnv",
-      "package": "direnv + nix-direnv",
+      "package": "direnv",
       "category": "dev-env",
-      "purpose": "Auto-loads a project's devenv shell on cd. Fish integration is enabled.",
+      "purpose": "Auto-loads a project's devenv shell on cd. Fish integration is enabled. Declared as `programs.direnv` in modules/home/default.nix, with `nix-direnv.enable = true` alongside it.",
       "notes": "A non-interactive agent shell may not have the project env loaded — run `direnv exec . <cmd>` if a project tool appears missing."
     },
     {
       "name": "uv",
       "package": "uv",
+      "commands": [
+        "uv",
+        "uvx"
+      ],
       "category": "dev-env",
       "purpose": "Python package/project manager. `uv run`, `uv sync`, and `uvx <cli>` for one-off Python CLIs.",
       "notes": "There is no system-wide python3 on this machine — uv is the only way to get a Python interpreter."
@@ -201,8 +211,8 @@
       "name": "code",
       "package": "vscode",
       "category": "editor",
-      "purpose": "VS Code. Also the configured EDITOR (`code --wait`) for git and jj.",
-      "notes": "Because EDITOR blocks on a GUI window, avoid commands that open an editor from an agent shell — pass -m/--message instead."
+      "purpose": "VS Code. Also the configured EDITOR (`code --wait`) for git and jj in interactive sessions.",
+      "notes": "Agent sessions override the editor variables to `false` (see machine.env.EDITOR), so an editor-opening command errors instead of blocking on a GUI window. jj's diff editor is separate and still agent-unsafe: avoid jj split/diffedit/resolve and any -i flag."
     },
     {
       "name": "claude",
@@ -226,38 +236,77 @@
     },
     {
       "name": "coreutils-and-friends",
-      "package": "base system",
+      "package": null,
+      "commands": [
+        "bash",
+        "sed",
+        "awk",
+        "find",
+        "xargs",
+        "grep",
+        "diff",
+        "patch",
+        "tar",
+        "gzip",
+        "less",
+        "man",
+        "curl",
+        "ssh",
+        "rsync",
+        "sudo",
+        "systemctl"
+      ],
       "category": "shell",
-      "purpose": "Available: bash, sed, awk, find, xargs, grep, diff, patch, tar, gzip, less, man, curl, ssh, rsync, sudo, systemctl."
+      "purpose": "Base-system commands, always present. `curl` lives here — there is no wget.",
+      "notes": "Not a nixpkgs attribute of its own, hence package: null. The bundle name is not itself a command; the `commands` array is what exists on PATH."
     }
   ],
   "not_installed": [
     {
-      "name": "python3",
+      "names": [
+        "python",
+        "python3"
+      ],
       "workaround": "Use `uv run` / `uvx`. No system interpreter exists."
     },
     {
-      "name": "node / npm",
+      "names": [
+        "node",
+        "npm"
+      ],
       "workaround": "Per-project via devenv (`languages.javascript`), or `nix shell nixpkgs#nodejs`."
     },
     {
-      "name": "cargo / rustc",
+      "names": [
+        "cargo",
+        "rustc"
+      ],
       "workaround": "Deliberately absent system-wide so it cannot shadow project toolchains. Use devenv's `languages.rust`."
     },
     {
-      "name": "gcc / make",
+      "names": [
+        "gcc",
+        "make"
+      ],
       "workaround": "Not on PATH outside a nix shell. Use `nix shell nixpkgs#gcc nixpkgs#gnumake` or a devenv shell."
     },
     {
-      "name": "docker / podman",
+      "names": [
+        "docker",
+        "podman"
+      ],
       "workaround": "Not enabled on this host."
     },
     {
-      "name": "wget",
+      "names": [
+        "wget"
+      ],
       "workaround": "curl is installed; use `curl -LO`."
     },
     {
-      "name": "unzip",
+      "names": [
+        "unzip"
+      ],
       "workaround": "`nix shell nixpkgs#unzip`, or `bsdtar`/`tar` where the format allows."
     }
   ],
