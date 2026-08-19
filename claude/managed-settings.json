@@ -1,0 +1,24 @@
+{
+  "env": {
+    "JJ_EDITOR": "false",
+    "GIT_EDITOR": "false",
+    "EDITOR": "false",
+    "VISUAL": "false"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(nh *)",
+            "command": "out=$(bash ~/.claude/check-conventions.sh 2>&1); rc=$?\n[ $rc -eq 0 ] && exit 0\nout=$(printf '%s\\n' \"$out\" | sed 's/\\x1b\\[[0-9;]*m//g' | grep -E 'FAIL|failed$')\njq -n --arg o \"$out\" '{\n  systemMessage: \"Convention check FAILED after a system rebuild — /etc/nixos/tools.json or ~/.claude/CLAUDE.md is now stale.\",\n  hookSpecificOutput: {\n    hookEventName: \"PostToolUse\",\n    additionalContext: (\"check-conventions.sh failed after `nh os`. The machine no longer matches what tools.json and CLAUDE.md claim; do not trust either until this is fixed.\\n\" + $o)\n  }\n}'",
+            "timeout": 30,
+            "statusMessage": "Checking machine conventions"
+          }
+        ]
+      }
+    ]
+  }
+}

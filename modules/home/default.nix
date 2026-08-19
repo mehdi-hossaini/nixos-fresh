@@ -322,4 +322,22 @@ in
     # with this set, the json is created inside the directory, not beside it.
     CLAUDE_CONFIG_DIR = "/home/${user}/.claude";
   };
+
+  # Claude Code's instructions and the check that keeps them honest are rules, so
+  # they are declared here and reach ~/.claude as store symlinks — a fresh machine
+  # built from this repo gets them, and editing the copy is impossible rather than
+  # merely discouraged. Everything else under ~/.claude is *state* (settings.json's
+  # theme, .claude.json, projects/, credentials) and stays writable and undeclared;
+  # it survives reboots via the persisted path in modules/nixos/impermanence.nix.
+  #
+  # The rules half of settings.json — the editor guard and the nh hook — cannot live
+  # here, because Claude Code must be able to write that file. It is declared as
+  # managed settings instead; see modules/nixos/claude.nix.
+  home.file = {
+    ".claude/CLAUDE.md".source = ../../claude/CLAUDE.md;
+    ".claude/check-conventions.sh" = {
+      source = ../../claude/check-conventions.sh;
+      executable = true;
+    };
+  };
 }
