@@ -71,10 +71,16 @@ The model, which is what makes the command map read strangely at first:
 
 **Never trigger an editor.** Agent sessions pin `JJ_EDITOR` / `GIT_EDITOR` / `EDITOR` /
 `VISUAL` to `false`, so a forgotten `-m` now fails fast instead of hanging on a GUI
-window. That guard does not reach the **diff** editor: `jj split`, `jj diffedit`,
+window. That guard does not reach the **diff** editor: bare `jj split`, `jj diffedit`,
 `jj resolve`, and any `-i` / `--interactive` / `--editor` flag open jj's builtin TUI,
-which an agent shell cannot drive. Stay away from those. Resolve conflicts by editing
-the marked files directly, then `jj squash` or `jj new`.
+which an agent shell cannot drive. Stay away from those. `jj split <paths>` is the
+exception — filesets select non-interactively and no editor opens. Resolve conflicts by
+editing the marked files directly, then `jj squash` or `jj new`.
+
+**Commit as you go.** `jj split <paths>` separates concerns that live in different
+files and is safe — it takes filesets and only opens the diff editor with `-i` or with
+no arguments at all. Two concerns inside *one* file cannot be separated without that
+editor, so commit each piece as you finish it rather than batching to the end.
 
 **Do not launch `jjui`** — it is a TUI and needs a terminal a subagent does not have.
 
@@ -138,6 +144,10 @@ switch to the user. New files must be `git add`ed first or the flake cannot see 
   handles badly, use `ast-grep` — invoked by that name, never as `sg`, which here is
   util-linux's setgid wrapper.
 - `curl` is present; `wget` is not.
+- Edit a file in place with `| sponge`, never `> tmp && mv tmp f` — `> f` truncates
+  before the reader runs, and a dropped `&&` leaves the edit unapplied and silent.
+- `jq` for JSON; `yq` / `tomlq` / `xq` take the same syntax over YAML, TOML and XML.
+  Reach for those over `sed` on structured files.
 - Do not launch interactive TUIs from an agent shell — `jjui`, `btop`, `fzf` and
   `zellij attach` among them; the inventory flags the rest in its `purpose` notes.
   `zellij action` / `zellij run` are scriptable.
