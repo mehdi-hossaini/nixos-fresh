@@ -17,9 +17,15 @@ INVENTORY=${INVENTORY:-/etc/nixos/tools.json}
 NIX_SOURCES=(/etc/nixos/modules/nixos/packages.nix /etc/nixos/modules/home/default.nix)
 SETTINGS=${SETTINGS:-$HOME/.claude/settings.json}
 MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
+IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
+REPO=${REPO:-/etc/nixos}
 # Files this repo declares into ~/.claude. Each must end up a nix-store symlink;
 # a plain file there means someone edited the copy instead of the source.
 DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh")
+# Law 5. The whole harness lives in these two paths and survives a reboot only
+# because impermanence.nix names them. Drop either and the machine comes back
+# without its rules or without its Claude state — with no warning until then.
+PERSISTED=("/etc/nixos" ".claude")
 
 pass=0
 fail=0
@@ -157,6 +163,34 @@ else
   ok "no env guard, but ui.editor ('$jj_ui_editor') does not block"
 fi
 note "jj split/diffedit/resolve use the DIFF editor (builtin TUI) — still agent-unsafe regardless"
+
+# The other two instances of law 3. Both were found by hitting them, and both are
+# assertable, unlike the law itself.
+if sudo -n true 2>/dev/null; then
+  bad "sudo does not ask for a password — passwordless sudo appeared, so 'activating needs a hand-off' is now stale"
+else
+  ok "sudo still requires a password, so activation is still a hand-off"
+fi
+origin_url=$(git -C "$REPO" remote get-url origin 2>/dev/null || true)
+case "$origin_url" in
+git@* | ssh://*) ok "$REPO pushes over SSH — git's askpass never runs" ;;
+"") bad "$REPO has no origin remote" ;;
+*) bad "$REPO origin is '$origin_url' — an HTTPS remote makes git call ksshaskpass, which an agent shell cannot answer" ;;
+esac
+
+# ── law 5: the harness only survives a reboot because these are declared ──────
+head_ "Persistence"
+if [ ! -f "$IMPERMANENCE" ]; then
+  bad "$IMPERMANENCE missing — nothing declares what survives a reboot"
+else
+  for p in "${PERSISTED[@]}"; do
+    if grep -qF "\"$p\"" "$IMPERMANENCE"; then
+      ok "$p is declared persistent"
+    else
+      bad "$p is NOT in $IMPERMANENCE — it will be gone after the next reboot, silently"
+    fi
+  done
+fi
 
 # ── the rules must be declared, not hand-written copies ───────────────────────
 head_ "Declared configuration"
