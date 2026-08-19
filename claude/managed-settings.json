@@ -20,5 +20,10 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "deny": [
+      "Edit(//etc/nixos/hosts/*/hardware-configuration.nix)"
+    ]
   }
 }
