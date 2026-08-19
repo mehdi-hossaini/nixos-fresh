@@ -39,6 +39,23 @@
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # `nix fmt` did nothing here, and formatter settings were duplicated between
+    # the checks output and each tool's flags. treefmt owns formatting now — one
+    # config in treefmt.nix, reached as `nix fmt` and gated as checks.formatting.
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # The prebuilt index, not the nix-index package. `nix-index` builds its
+    # database into ~/.cache/nix-index, which impermanence does not persist —
+    # only .cache/{sccache,nix,mesa_shader_cache} survive — so a hand-built index
+    # would evaporate on every reboot. This ships one and updates it weekly.
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -49,10 +66,13 @@
       impermanence,
       home-manager,
       git-hooks,
+      treefmt-nix,
       ...
     }:
     let
       inherit (nixpkgs) lib;
+
+      treefmtFor = system: treefmt-nix.lib.evalModule nixpkgs.legacyPackages.${system} ./treefmt.nix;
 
       identity = import ./identity.nix;
 
@@ -67,6 +87,12 @@
       # nix linter must skip it: reformatting or de-linting it is an edit the file
       # forbids, and one the generator would undo.
       generatedNix = [ "^hosts/[^/]+/hardware-configuration\\.nix$" ];
+
+      # Systems come from the hosts themselves, like hostNames above — another
+      # architecture extends the per-system outputs with no edit here.
+      hostSystems = lib.unique (
+        lib.mapAttrsToList (_: host: host.pkgs.stdenv.hostPlatform.system) self.nixosConfigurations
+      );
 
       mkHost =
         hostName:
@@ -101,50 +127,34 @@
 
       # Systems come from the hosts themselves, same as everything else here —
       # adding an aarch64 machine extends this with no edit.
-      #
-      # Every nix linter has to skip the one generated file. Not all of hosts/:
-      # default.nix and disko.nix beside it are hand-written and want checking.
-      checks =
-        lib.genAttrs
-          (lib.unique (
-            lib.mapAttrsToList (_: host: host.pkgs.stdenv.hostPlatform.system) self.nixosConfigurations
-          ))
-          (system: {
-            lint = git-hooks.lib.${system}.run {
-              src = ./.;
-              hooks = {
-                nixfmt-rfc-style = {
-                  enable = true;
-                  excludes = generatedNix;
-                };
-                # statix is deliberately NOT in the gate, though the conventions
-                # list it. It reports ~20 pre-existing findings, nearly all
-                # `repeated_keys` — it wants boot.loader and boot.initrd merged
-                # into one attrset, where this config writes flat paths with a
-                # comment above each. That is a style disagreement, not a defect,
-                # and gating on it would mean either rewriting twenty sites or
-                # muting the lint. Run `statix check .` by hand and judge.
-                # Its hook also ignores `excludes`, scanning repo-wide, so it
-                # cannot skip the generated file either.
-                deadnix = {
-                  enable = true;
-                  excludes = generatedNix;
-                };
-                shellcheck.enable = true;
-                # Two spaces, matching the scripts already in claude/. shfmt defaults
-                # to tabs, which would rewrite every line of them.
-                shfmt = {
-                  enable = true;
-                  entry = lib.mkForce "${nixpkgs.legacyPackages.${system}.shfmt}/bin/shfmt -i 2 -d";
-                  # installer.sh has never been shfmt'd — it needs 256 lines changed
-                  # under any indent width. It partitions disks, writes an encryption
-                  # keyfile and shreds it on every exit path; reformatting it wholesale
-                  # as a side effect of adding a lint gate is a separate decision, and
-                  # one to make deliberately. shellcheck still covers it.
-                  excludes = [ "^installer\\.sh$" ];
-                };
-              };
+      formatter = lib.genAttrs hostSystems (system: (treefmtFor system).config.build.wrapper);
+
+      # Two gates, split by what they are. Formatting is treefmt's, configured once
+      # in treefmt.nix and applied by `nix fmt`; the linters below only report, so
+      # they have nothing to duplicate. Keeping nixfmt and shfmt here as well would
+      # mean two places deciding how this repo is formatted.
+      checks = lib.genAttrs hostSystems (system: {
+        formatting = (treefmtFor system).config.build.check self;
+
+        lint = git-hooks.lib.${system}.run {
+          src = ./.;
+          hooks = {
+            # hosts/*/hardware-configuration.nix only — default.nix and disko.nix
+            # beside it are hand-written and do get checked.
+            deadnix = {
+              enable = true;
+              excludes = generatedNix;
             };
-          });
+            shellcheck.enable = true;
+            # statix is deliberately NOT gated, though the conventions list it. It
+            # reports ~20 pre-existing findings, nearly all `repeated_keys` — it
+            # wants boot.loader and boot.initrd merged into one attrset, where this
+            # config writes flat paths with a comment above each. That is a style
+            # disagreement, not a defect, and gating would mean rewriting twenty
+            # sites or muting the lint. Its hook ignores `excludes` too, so it
+            # cannot skip the generated file. Run `statix check .` by hand.
+          };
+        };
+      });
     };
 }

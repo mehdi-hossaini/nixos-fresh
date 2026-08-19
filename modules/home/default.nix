@@ -307,6 +307,15 @@ in
     };
   };
 
+  # `nix-locate <binary>` answers which package ships a file, without guessing at
+  # attribute names — the lookup step that "a missing tool is a decision" asks for.
+  # The database comes prebuilt from nix-index-database (see home-manager.nix);
+  # nothing indexes anything on this machine.
+  programs.nix-index = {
+    enable = true;
+    enableFishIntegration = true;
+  };
+
   programs.bat.enable = true;
   programs.fzf = {
     enable = true;
