@@ -77,6 +77,11 @@ which an agent shell cannot drive. Stay away from those. `jj split <paths>` is t
 exception — filesets select non-interactively and no editor opens. Resolve conflicts by
 editing the marked files directly, then `jj squash` or `jj new`.
 
+**Run `nix flake check` before committing in `/etc/nixos`.** It gates nixfmt, deadnix,
+shellcheck and shfmt over the tree. Nothing runs it for you: jj has no hook support and
+bypasses `.git/hooks`, so a pre-commit hook would never fire. See the inventory's
+conventions for what the gate deliberately leaves out.
+
 **Commit as you go.** `jj split <paths>` separates concerns that live in different
 files and is safe — it takes filesets and only opens the diff editor with `-i` or with
 no arguments at all. Two concerns inside *one* file cannot be separated without that
