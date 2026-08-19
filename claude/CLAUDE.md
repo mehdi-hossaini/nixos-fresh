@@ -19,12 +19,30 @@ the agent-session editor guard and the convention hook, which live in
 `modules/nixos/claude.nix`. Only `~/.claude/settings.json` is yours to edit in place —
 it carries state (theme), not rules.
 
+**No prompt can be answered.** An agent shell has no terminal and no display, so
+anything that stops to ask — an editor, a password, a TUI, an askpass dialog — fails or
+hangs instead of waiting. The known instances: `EDITOR` (pinned to `false`, see below),
+`sudo` behind `nh os switch`, and git's askpass on an HTTPS remote (avoided by using SSH
+remotes — `gh auth status` reports ssh as the configured protocol). Assume there are
+others not yet found. Take the work to the last step that needs no answer, then hand
+over: a clean build, a staged commit, a command the user can paste.
+
 ## Version control: jj in front, git behind
 
-Use **jj** (jujutsu) for local history. Repos here are colocated — `.jj` and `.git`
-in the same directory, sharing one object store — so coworkers, CI, and GitHub see
-ordinary Git commits. Colocation is the default in jj 0.44; `jj git init` inside an
-existing Git repo adopts it in place and preserves the history.
+Use **jj** (jujutsu) for local history. Colocated means `.jj` and `.git` in the same
+directory sharing one object store, so coworkers, CI and GitHub see ordinary Git
+commits.
+
+**Check which case you are in before touching history** — `ls -d .jj .git` answers it
+in one command, and the rules below apply to only one of the three:
+
+| `.jj` | `.git` | what to do |
+| --- | --- | --- |
+| yes | yes | colocated. The table below applies; never `git commit` here |
+| no | yes | git-only. Plain `git commit` is correct and loses nothing. Colocate with `jj git init --colocate` — it adopts in place and preserves history — but only for a repo that is yours |
+| no | no | not under version control. Say so before editing anything; there is no undo |
+
+`/etc/nixos` is colocated. A directory you were handed may be any of the three.
 
 The model, which is what makes the command map read strangely at first:
 
