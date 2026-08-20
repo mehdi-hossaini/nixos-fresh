@@ -209,6 +209,46 @@ else
   done
 fi
 
+# ── law 7: the repo is public, and the store is readable by everyone anyway ────
+# Two separate leaks with one shape, so one scan covers both. The path is read out of
+# machine.nix rather than written here — change the option and this follows it.
+head_ "Secrets"
+MACHINE=${MACHINE:-$REPO/modules/nixos/machine.nix}
+secrets_dir=$(sed -n '/secretsDir = lib.mkOption/,/^    };/p' "$MACHINE" 2>/dev/null |
+  sed -n 's/.*default = "\(.*\)";.*/\1/p' | head -1)
+if [ -z "$secrets_dir" ]; then
+  bad "cannot read machine.secretsDir out of $MACHINE — the rest of this section has nothing to check"
+else
+  case "$secrets_dir" in
+  "$REPO"/*) bad "secretsDir is $secrets_dir, inside the repo — it would be committed and published" ;;
+  *) ok "secretsDir ($secrets_dir) is outside $REPO" ;;
+  esac
+  if [ ! -d "$secrets_dir" ]; then
+    bad "$secrets_dir does not exist — activation reads the password hash from there and fails without it"
+  else
+    perm=$(stat -c '%a %U' "$secrets_dir")
+    if [ "$perm" = "700 root" ]; then
+      ok "$secrets_dir is 0700 root — unreadable by this user, unlike anything in the store"
+    else
+      bad "$secrets_dir is '$perm', not '700 root' — the one place secrets are allowed is not protecting them"
+    fi
+  fi
+fi
+
+# Content, not location. A secret pasted into a nix file is public twice over: pushed to
+# a public remote, and copied world-readable into /nix/store on every build. flake.lock is
+# excluded because its narHashes match nothing here but are noise worth not re-reading.
+# shellcheck disable=SC2016  # the $ and $( here are regex, not expansion — single quotes are exactly right
+leak_re='(BEGIN [A-Z ]*PRIVATE KEY|AGE-SECRET-KEY-[01]|\$(6|y|2[aby])\$[./A-Za-z0-9]{8,}|(password|passwd|secret|api[_-]?key|token)[[:space:]]*=[[:space:]]*"[^"]{12,}")'
+leaks=$(rg -l -i "$leak_re" -g '!flake.lock' "$REPO" 2>/dev/null)
+if [ -z "$leaks" ]; then
+  ok "no private key, password hash or long literal secret anywhere in $REPO"
+else
+  while read -r f; do
+    bad "$f looks like it carries secret material — $REPO is a public repo and the store is world-readable"
+  done <<<"$leaks"
+fi
+
 # ── the rules must be declared, not hand-written copies ───────────────────────
 head_ "Declared configuration"
 for f in "${DECLARED[@]}"; do

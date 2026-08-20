@@ -1,6 +1,6 @@
 # Global conventions (NixOS, single user)
 
-Six laws. Everything below is a consequence of them — when a situation is not covered,
+Seven laws. Everything below is a consequence of them — when a situation is not covered,
 derive it from here rather than guessing.
 
 1. **Nothing is installed imperatively.** Persistent → `/etc/nixos`, then `nh os
@@ -26,6 +26,12 @@ derive it from here rather than guessing.
    --version`, `--help`, `jq` over the file, `nix eval` over the config. This file is
    included in that: it was true when it was written, and `check-conventions.sh` is what
    says which parts still are.
+7. **Everything declared is public.** The other half of law 5. `/etc/nixos` is a public
+   GitHub repo, and whatever a nix file contains is copied into `/nix/store`, which every
+   process on this machine can read — two independent reasons a secret put here stops
+   being one. Real secrets live in `machine.secretsDir` (`/persistent/system/secrets`,
+   root-only, on the encrypted root), written there by `installer.sh`. A nix file may
+   point at that path; it must never carry the value.
 
 `/etc/nixos/tools.json` is the **inventory**; this file is the **rules**. Where the two
 disagree the inventory wins, and `bash ~/.claude/check-conventions.sh` is what says so:
