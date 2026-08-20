@@ -26,6 +26,24 @@ disagree the inventory wins, and `bash ~/.claude/check-conventions.sh` is what s
 it derives its expectations from the inventory and verifies them against the live
 machine. Never transcribe version numbers from either — run `<tool> --version`.
 
+## Instruction files and skills
+
+Law 4 decides where each of these lives. "Declared" does not mean "in `/etc/nixos`" — it
+means reproducible from *a* repo rather than hand-written into place.
+
+**This file is the only home for a rule that holds everywhere.** A project's `CLAUDE.md`
+says what is *different* in that directory and nothing else: no toolchain, no VCS, the
+command that builds it, a convention its own files follow. It never restates a rule from
+here. A copy cannot be corrected from here, and a stale one outranks nothing while
+looking authoritative — `check-conventions.sh` fails any project file repeating more than
+ten lines of this one, so a duplicated rule is caught rather than obeyed.
+
+**Skills split the same way.** One that applies everywhere is declared in
+`/etc/nixos/claude/skills/` and reaches `~/.claude/skills/` as a store symlink — `unslop`
+is the only one. One that applies to a single project lives in that project's
+`.claude/skills/`, committed to that project's repo: declared, just not by this one.
+Nothing under `~/.claude/skills/` is hand-written, and the check asserts it.
+
 ## Version control: jj in front, git behind
 
 Use **jj** (jujutsu) for local history. Colocated means `.jj` and `.git` in the same

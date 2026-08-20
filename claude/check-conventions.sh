@@ -19,6 +19,7 @@ SETTINGS=${SETTINGS:-$HOME/.claude/settings.json}
 MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
 REPO=${REPO:-/etc/nixos}
+SKILLS=${SKILLS:-$HOME/.claude/skills}
 # Files this repo declares into ~/.claude. Each must end up a nix-store symlink;
 # a plain file there means someone edited the copy instead of the source.
 DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh")
@@ -207,6 +208,29 @@ if [ -f "$MANAGED" ]; then
   ok "managed-settings.json is present (declared via environment.etc)"
 else
   bad "$MANAGED missing — the env guard and the nh hook are not declared"
+fi
+
+# Skills are rules, so law 4 applies to them too. A global one is declared in this repo
+# and lands here as a store symlink; a project one belongs in that project's own
+# .claude/skills/, committed there. Neither route leaves a hand-written file in this
+# directory, so anything not resolving into the store is state pretending to be a rule.
+if [ ! -d "$SKILLS" ]; then
+  ok "no $SKILLS directory — nothing hand-written to drift"
+else
+  handwritten=()
+  while read -r f; do
+    [[ "$(readlink -f "$f")" == /nix/store/* ]] || handwritten+=("$f")
+  done < <(fd -H -I -t f -t l . "$SKILLS" 2>/dev/null)
+  n=$(fd -H -I -t f -t l . "$SKILLS" 2>/dev/null | wc -l)
+  if [ ${#handwritten[@]} -ne 0 ]; then
+    for f in "${handwritten[@]}"; do
+      bad "$f is hand-written — a global skill goes in /etc/nixos/claude/skills/, a project one in that project's repo"
+    done
+  elif [ "$n" -eq 0 ]; then
+    ok "$SKILLS is empty"
+  else
+    ok "all $n files under $SKILLS resolve into the store"
+  fi
 fi
 
 # ── a project CLAUDE.md narrows; it must not restate this one ────────────────
