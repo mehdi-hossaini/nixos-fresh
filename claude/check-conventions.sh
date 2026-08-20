@@ -74,6 +74,22 @@ else
   bad "a tools[].commands is not an array"
 fi
 
+# Law 6 is about how to work, so most of it cannot be asserted — but one instance can.
+# Exactly one note in the inventory is pinned to a version: jj's, recording what was
+# already default-true in 0.44. An upgrade would leave that claim quietly describing an
+# older jj, which is the exact shape of a fact remembered rather than checked. Failing on
+# the upgrade is the prompt to re-run `jj util config-schema` and rewrite the note.
+noted_jj=$(jq -r '.tools[] | select(.name == "jj") | .notes // ""' "$INVENTORY" |
+  grep -oE '[0-9]+\.[0-9]+' | head -1)
+live_jj=$(jj --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+if [ -z "$noted_jj" ]; then
+  ok "jj's inventory note names no version — nothing there to go stale"
+elif [ "$noted_jj" = "$live_jj" ]; then
+  ok "jj's note describes $noted_jj and jj is $live_jj"
+else
+  bad "jj's note describes $noted_jj but jj is $live_jj — recheck it against 'jj util config-schema' and rewrite the note"
+fi
+
 # ── derived: what the inventory says is on PATH ────────────────────────────────
 head_ "Commands the inventory promises"
 missing=()

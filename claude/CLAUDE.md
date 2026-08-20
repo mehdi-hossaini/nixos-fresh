@@ -1,6 +1,6 @@
 # Global conventions (NixOS, single user)
 
-Five laws. Everything below is a consequence of them — when a situation is not covered,
+Six laws. Everything below is a consequence of them — when a situation is not covered,
 derive it from here rather than guessing.
 
 1. **Nothing is installed imperatively.** Persistent → `/etc/nixos`, then `nh os
@@ -20,11 +20,17 @@ derive it from here rather than guessing.
    `~/.claude/settings.json` is writable in place; it holds state (theme), not rules.
 5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
    paths outlive a reboot. Use the session scratchpad, never the home root.
+6. **Nothing here is known from memory.** A version, a flag's argument order, whether a
+   command opens a TUI, what a file already says — each is one command away, and the
+   guess has been wrong often enough that checking is the cheaper habit. `<tool>
+   --version`, `--help`, `jq` over the file, `nix eval` over the config. This file is
+   included in that: it was true when it was written, and `check-conventions.sh` is what
+   says which parts still are.
 
 `/etc/nixos/tools.json` is the **inventory**; this file is the **rules**. Where the two
 disagree the inventory wins, and `bash ~/.claude/check-conventions.sh` is what says so:
 it derives its expectations from the inventory and verifies them against the live
-machine. Never transcribe version numbers from either — run `<tool> --version`.
+machine.
 
 ## Instruction files and skills
 
