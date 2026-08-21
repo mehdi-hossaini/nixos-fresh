@@ -82,7 +82,7 @@
       "package": "jujutsu",
       "category": "vcs",
       "purpose": "Jujutsu VCS over the git backend — colocated repos, no staging area, `jj undo` on any operation.",
-      "notes": "Bare `jj` is configured to show the log. `git.colocate` and `git.track-default-bookmark-on-clone` are already default-true in 0.44; `git.auto-local-bookmark` no longer exists."
+      "notes": "Bare `jj` is configured to show the log. `git.colocate` and `git.track-default-bookmark-on-clone` default to true; `git.auto-local-bookmark` no longer exists. No version is named here on purpose: check-conventions.sh asserts all four claims against `jj util config-schema` and `jj config get`, so they go red when one stops being true rather than when jj is upgraded."
     },
     {
       "name": "jjui",

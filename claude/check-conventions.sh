@@ -83,20 +83,38 @@ else
   bad "a tools[].agent_unsafe is malformed — claude.nix would build no deny rule from it"
 fi
 
-# Law 6 is about how to work, so most of it cannot be asserted — but one instance can.
-# Exactly one note in the inventory is pinned to a version: jj's, recording what was
-# already default-true in 0.44. An upgrade would leave that claim quietly describing an
-# older jj, which is the exact shape of a fact remembered rather than checked. Failing on
-# the upgrade is the prompt to re-run `jj util config-schema` and rewrite the note.
-noted_jj=$(jq -r '.tools[] | select(.name == "jj") | .notes // ""' "$INVENTORY" |
-  grep -oE '[0-9]+\.[0-9]+' | head -1)
-live_jj=$(jj --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
-if [ -z "$noted_jj" ]; then
-  ok "jj's inventory note names no version — nothing there to go stale"
-elif [ "$noted_jj" = "$live_jj" ]; then
-  ok "jj's note describes $noted_jj and jj is $live_jj"
+# Law 6 is about how to work, so most of it cannot be asserted — but the inventory's jj
+# note makes four claims about jj's own configuration, and every one is a command away.
+#
+# This block used to compare the "0.44" in that note against `jj --version`, on the
+# theory that an upgrade might leave the claims describing an older jj. It went red on
+# every upgrade instead, whether or not anything it described had moved — and a check
+# that cries wolf is a check that gets muted, which would have hidden a real drift
+# behind an expected one. Asserting the claims themselves fires only when one of them
+# stops being true, which is the thing the note actually promises. The note is the
+# prose; this is its test. Change one and change the other.
+schema=$(jj util config-schema 2>/dev/null)
+if [ -z "$schema" ]; then
+  bad "jj util config-schema returned nothing — the inventory's jj claims cannot be checked"
 else
-  bad "jj's note describes $noted_jj but jj is $live_jj — recheck it against 'jj util config-schema' and rewrite the note"
+  default_cmd=$(jj config get ui.default-command 2>/dev/null)
+  if [ "$default_cmd" = log ]; then
+    ok "bare jj runs log (ui.default-command)"
+  else
+    bad "ui.default-command is '${default_cmd:-unset}', not 'log' — the inventory says bare jj shows the log"
+  fi
+  for k in colocate track-default-bookmark-on-clone; do
+    if jq -e --arg k "$k" '.properties.git.properties[$k].default == true' <<<"$schema" >/dev/null; then
+      ok "git.$k still defaults to true"
+    else
+      bad "git.$k no longer defaults to true — rewrite jj's note in $INVENTORY"
+    fi
+  done
+  if jq -e '.properties.git.properties | has("auto-local-bookmark") | not' <<<"$schema" >/dev/null; then
+    ok "git.auto-local-bookmark is still absent"
+  else
+    bad "git.auto-local-bookmark exists again — jj's note in $INVENTORY says it does not"
+  fi
 fi
 
 # ── derived: what the inventory says is on PATH ────────────────────────────────
