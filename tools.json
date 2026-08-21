@@ -4,7 +4,8 @@
     "This file is checked mechanically by ~/.claude/check-conventions.sh — keep these contracts true or the check fails.",
     "tools[].commands — the executables the entry puts on PATH. Omitted means `[name]`. An empty array means the entry ships no binary under its own name (a bundle or a library).",
     "tools[].package — the nixpkgs attribute or home-manager program name. Must appear in modules/nixos/packages.nix or modules/home/default.nix. null means it is not separately declared (base system).",
-    "not_installed[].names — every command the entry covers, one per element. This is the machine-readable field; there is no `name` here on purpose, so the list cannot drift from its prose."
+    "not_installed[].names — every command the entry covers, one per element. This is the machine-readable field; there is no `name` here on purpose, so the list cannot drift from its prose.",
+    "tools[].agent_unsafe — command prefixes that hang a session with no terminal. Optional; present only on the interactive entries. modules/nixos/claude.nix maps each to a `Bash(<prefix> *)` deny rule, so adding an interactive tool here denies it too — the prose in `purpose` is the reading aid, this array is what the wall is built from. A prefix rather than a bare name because `zellij attach` is unsafe while `zellij action` and `zellij run` are not."
   ],
   "machine": {
     "hostname": "nixos-machine",
@@ -87,7 +88,10 @@
       "name": "jjui",
       "package": "jjui",
       "category": "vcs",
-      "purpose": "TUI over jj's operation log. Interactive — do not launch from an agent shell."
+      "purpose": "TUI over jj's operation log. Interactive — do not launch from an agent shell.",
+      "agent_unsafe": [
+        "jjui"
+      ]
     },
     {
       "name": "gh",
@@ -252,19 +256,28 @@
       "name": "fzf",
       "package": "fzf",
       "category": "cli",
-      "purpose": "Fuzzy finder. Interactive — needs a TTY; not useful non-interactively."
+      "purpose": "Fuzzy finder. Interactive — needs a TTY; not useful non-interactively.",
+      "agent_unsafe": [
+        "fzf"
+      ]
     },
     {
       "name": "btop",
       "package": "btop",
       "category": "cli",
-      "purpose": "Resource monitor. Interactive TUI — do not launch from an agent shell."
+      "purpose": "Resource monitor. Interactive TUI — do not launch from an agent shell.",
+      "agent_unsafe": [
+        "btop"
+      ]
     },
     {
       "name": "zellij",
       "package": "zellij",
       "category": "terminal",
-      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks. Can be driven non-interactively via `zellij action` / `zellij run`."
+      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks. Can be driven non-interactively via `zellij action` / `zellij run`.",
+      "agent_unsafe": [
+        "zellij attach"
+      ]
     },
     {
       "name": "alacritty",

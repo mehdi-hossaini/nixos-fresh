@@ -73,6 +73,15 @@ if jq -e '[.tools[] | select(has("commands") and (.commands | type) != "array")]
 else
   bad "a tools[].commands is not an array"
 fi
+# modules/nixos/claude.nix maps this field to Bash deny patterns, so a malformed
+# entry does not produce a bad rule — it produces no rule, and the wall it was
+# meant to build is silently missing.
+if jq -e '[.tools[] | select(has("agent_unsafe")) | select((.agent_unsafe | type) != "array" or (.agent_unsafe | length) == 0 or any(.agent_unsafe[]; type != "string"))] | length == 0' \
+  "$INVENTORY" >/dev/null; then
+  ok "every tools[].agent_unsafe is a non-empty array of strings where present"
+else
+  bad "a tools[].agent_unsafe is malformed — claude.nix would build no deny rule from it"
+fi
 
 # Law 6 is about how to work, so most of it cannot be asserted — but one instance can.
 # Exactly one note in the inventory is pinned to a version: jj's, recording what was
@@ -262,6 +271,25 @@ for f in "${DECLARED[@]}"; do
 done
 if [ -f "$MANAGED" ]; then
   ok "managed-settings.json is present (declared via environment.etc)"
+  # The last hop of the derivation: tools.json marks a tool agent_unsafe,
+  # claude.nix turns that into a deny pattern, and this asserts the pattern
+  # reached the ACTIVE file. Red between editing the inventory and switching is
+  # correct, not noise — the same property the "promised commands resolve" check
+  # already has, and for the same reason.
+  undenied=()
+  while read -r c; do
+    [ -n "$c" ] || continue
+    jq -e --arg r "Bash($c *)" '(.permissions.deny // []) | index($r)' "$MANAGED" >/dev/null ||
+      undenied+=("$c")
+  done < <(jq -r '[.tools[] | .agent_unsafe // empty | .[]] | unique[]' "$INVENTORY")
+  if [ ${#undenied[@]} -eq 0 ]; then
+    n=$(jq -r '[.tools[] | .agent_unsafe // empty | .[]] | unique | length' "$INVENTORY")
+    ok "all $n agent_unsafe commands are denied in the active managed settings"
+  else
+    for c in "${undenied[@]}"; do
+      bad "tools.json marks '$c' agent_unsafe but no Bash($c *) deny is active — run 'nh os switch /etc/nixos' if the config already has it"
+    done
+  fi
 else
   bad "$MANAGED missing — the env guard and the nh hook are not declared"
 fi

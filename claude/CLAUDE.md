@@ -15,9 +15,11 @@ derive it from here rather than guessing.
    answer, then hand over.
 4. **Rules are declared; state is not.** `~/.claude/CLAUDE.md` and
    `check-conventions.sh` are read-only store symlinks — edit `/etc/nixos/claude/` and
-   rebuild. The editor guard, the deny rules and the hooks live in that directory's
-   `managed-settings.json`, wired by `modules/nixos/claude.nix`. Only
-   `~/.claude/settings.json` is writable in place; it holds state (theme), not rules.
+   rebuild. The editor guard, the deny rules and the hooks are *generated* by
+   `modules/nixos/claude.nix` into `/etc/claude-code/managed-settings.json`; there is
+   no JSON file to edit, and the reasoning for each rule sits beside it in the nix.
+   Only `~/.claude/settings.json` is writable in place; it holds state (theme), not
+   rules.
 5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
    paths outlive a reboot. Use the session scratchpad, never the home root.
 6. **Nothing here is known from memory.** A version, a flag's argument order, whether a
@@ -40,18 +42,30 @@ machine.
 
 ## What is enforced, and what is only written down
 
-A rule in prose is a handshake; a rule in `managed-settings.json` is a wall. Both are
-here, and the difference decides how carefully a line needs reading. The walls, as
-`permissions.deny` entries and `PreToolUse` hooks:
+A rule in prose is a handshake; a rule in the generated managed settings is a wall.
+Both are here, and the difference decides how carefully a line needs reading. The
+walls, as `permissions.deny` entries and hooks:
 
-- **TUIs that would hang the session** — `jjui`, `btop`, `fzf`, `zellij attach`, bare
-  `jj split`, bare `jj resolve`, `jj diffedit`, and any `jj … -i` / `--interactive`.
+- **TUIs that would hang the session.** Not a list — `jq -r '[.tools[] |
+  .agent_unsafe // empty | .[]] | unique[]' tools.json` is the list, and
+  `modules/nixos/claude.nix` builds a `Bash(<prefix> *)` deny from each. Marking a
+  tool interactive in the inventory is what denies it.
+- **jj's diff editor** — bare `jj split`, bare `jj resolve`, `jj diffedit`, and any
+  `jj … -i` / `--interactive`. Subcommand shapes, not inventory facts, so these stay
+  literal.
 - **`sg`**, which here is util-linux's setgid wrapper and not ast-grep.
 - **`nh os switch`**, whose sudo prompt no Claude session can answer (law 3).
 - **`git commit` in a colocated repo**, decided by looking for `.jj` in the working
   directory, so a git-only repo is left alone.
 - **`jj commit` and `jj git push` in `/etc/nixos`**, gated on `nix flake check`.
 - **Editing `hosts/*/hardware-configuration.nix`**.
+
+One hook reports rather than blocks: a `*.sh` or `*.bash` file written through Write
+or Edit is shellchecked on the spot, at the same severity the commit gate uses, and
+the findings come back immediately. Bash typed inline into a Bash call is invisible to
+a hook and stays advisory — that split is the general method here. For any rule, ask
+what a hook can actually observe, wall off that part, and say plainly that the rest is
+still a request.
 
 `permissions.allow` is the same argument pointed the other way. Sessions start in auto
 mode, where a classifier reviews shell commands in place of a prompt; an allow rule
