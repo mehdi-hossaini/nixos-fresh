@@ -293,6 +293,13 @@
       "purpose": "Browser. GUI. Binary is `brave-origin`, not `brave`."
     },
     {
+      "name": "prismlauncher",
+      "package": "prismlauncher",
+      "category": "games",
+      "purpose": "Minecraft launcher. GUI.",
+      "notes": "PrismLauncher-Cracked fork (github:Diegiwg/PrismLauncher-Cracked), overlaid to replace the official nixpkgs package — supports offline accounts only. The fork exists to bypass purchase verification, so a real Microsoft account is unsupported and risks violating Mojang/Microsoft ToS."
+    },
+    {
       "name": "fish",
       "package": "fish",
       "category": "shell",

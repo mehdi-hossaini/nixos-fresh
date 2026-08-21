@@ -24,6 +24,7 @@
     # without it you get one OS window per task.
     zellij
     vscode
+    prismlauncher
 
     claude-code
 
