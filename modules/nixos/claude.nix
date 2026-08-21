@@ -36,6 +36,36 @@
 # `jj commit` and `jj git push` and denies the call when it fails. Roughly ten seconds
 # on this tree, and it only fires when the working directory is /etc/nixos.
 #
+# permissions.allow is the other side of the same argument. Sessions here start in auto
+# mode, where a classifier reviews shell commands in place of a prompt — so before this
+# list, `rg`, `jj log` and `nh os build` each cost a round trip and could be refused, and
+# a refusal carried no information because everything was reviewed alike. An allow rule
+# resolves before the classifier runs, so the list moves the reading half of the workflow
+# off that path and leaves review for calls that change something.
+#
+# It was derived rather than imagined: `jq` over the Bash calls in ~/.claude/projects,
+# split on shell separators and counted by binary. That is also why the list is short.
+# What Claude Code already treats as read-only (ls, cat, head, tail, grep, find, wc,
+# diff, stat, and git's read-only forms) is deliberately absent for the same reason the
+# absent tools are — a rule there would restate a decision already made elsewhere.
+#
+# Three entries the counts argued for and safety did not. `sed -n` appeared ~700 times,
+# but `-n` does not stop sed's `w` command from writing a file. `devenv shell --` was the
+# single most common command in the transcripts, and it runs whatever follows it, which
+# is exactly the case Claude Code documents as unsafe to allowlist. `awk` can redirect
+# inside its own program. All three keep prompting, on purpose.
+#
+# `fd` and `nix eval` are allowed with their escape hatches denied above: `fd -x/-X` runs
+# arbitrary commands and is idiomatic enough to type by accident, and `nix eval
+# --write-to` writes a directory. Deny beats allow, so the pair composes. The standard
+# applied throughout is "would a normal invocation ever do this by accident", not "is it
+# unreachable by someone trying" — rg's `--pre` can run a command too, and is left alone
+# because nobody arrives there without meaning to.
+#
+# Not included: `Bash(* --version)` and `Bash(* --help *)`, which law 6 would otherwise
+# want. Auto mode drops leading-wildcard allow rules as broad grants of execution, so
+# they would be dead weight here and misleading to read.
+#
 # One accepted cost: a pattern like `Bash(btop *)` also blocks `btop --version`, which
 # law 6 otherwise recommends. Deny beats allow, so no exception can be carved back out,
 # and a narrower pattern cannot express "every invocation except the informational

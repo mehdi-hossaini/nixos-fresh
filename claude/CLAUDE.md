@@ -53,7 +53,20 @@ here, and the difference decides how carefully a line needs reading. The walls, 
 - **`jj commit` and `jj git push` in `/etc/nixos`**, gated on `nix flake check`.
 - **Editing `hosts/*/hardware-configuration.nix`**.
 
-Two things this deliberately leaves out. It does not deny what is already absent:
+`permissions.allow` is the same argument pointed the other way. Sessions start in auto
+mode, where a classifier reviews shell commands in place of a prompt; an allow rule
+resolves before that runs. The reading half of the workflow is on the list — `rg`, `fd`,
+`jq`, `jj st`/`log`/`diff`/`show`/`file list`/`op log`/`bookmark list`, `nix eval`, `nix
+flake check`, `nh os build`, and `check-conventions.sh` — so what still gets reviewed is
+the half that changes something, and a refusal there means something.
+
+Three you might expect and will not find. `sed -n` still prompts, because `-n` does not
+stop sed's `w` command writing a file. `devenv shell --` still prompts, because it runs
+whatever follows it. `awk` still prompts, because it can redirect from inside its own
+program. And `<tool> --version` is not allowlisted despite law 6: auto mode drops
+leading-wildcard rules, so the entry would not survive.
+
+Two things the deny list deliberately leaves out. It does not deny what is already absent:
 `command not found` is the wall for `pip`, `python3`, `node`, `cargo` and `wget`
 already, and a rule there would be a second copy of a fact the machine states better
 (laws 2 and 6). And it does not deny preferences — `rg` over `grep -r`, `| sponge` over
