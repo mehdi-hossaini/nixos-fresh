@@ -15,7 +15,7 @@ derive it from here rather than guessing.
    answer, then hand over.
 4. **Rules are declared; state is not.** `~/.claude/CLAUDE.md` and
    `check-conventions.sh` are read-only store symlinks — edit `/etc/nixos/claude/` and
-   rebuild. The editor guard and the convention hook live in that directory's
+   rebuild. The editor guard, the deny rules and the hooks live in that directory's
    `managed-settings.json`, wired by `modules/nixos/claude.nix`. Only
    `~/.claude/settings.json` is writable in place; it holds state (theme), not rules.
 5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
@@ -37,6 +37,32 @@ derive it from here rather than guessing.
 disagree the inventory wins, and `bash ~/.claude/check-conventions.sh` is what says so:
 it derives its expectations from the inventory and verifies them against the live
 machine.
+
+## What is enforced, and what is only written down
+
+A rule in prose is a handshake; a rule in `managed-settings.json` is a wall. Both are
+here, and the difference decides how carefully a line needs reading. The walls, as
+`permissions.deny` entries and `PreToolUse` hooks:
+
+- **TUIs that would hang the session** — `jjui`, `btop`, `fzf`, `zellij attach`, bare
+  `jj split`, bare `jj resolve`, `jj diffedit`, and any `jj … -i` / `--interactive`.
+- **`sg`**, which here is util-linux's setgid wrapper and not ast-grep.
+- **`nh os switch`**, whose sudo prompt no Claude session can answer (law 3).
+- **`git commit` in a colocated repo**, decided by looking for `.jj` in the working
+  directory, so a git-only repo is left alone.
+- **`jj commit` and `jj git push` in `/etc/nixos`**, gated on `nix flake check`.
+- **Editing `hosts/*/hardware-configuration.nix`**.
+
+Two things this deliberately leaves out. It does not deny what is already absent:
+`command not found` is the wall for `pip`, `python3`, `node`, `cargo` and `wget`
+already, and a rule there would be a second copy of a fact the machine states better
+(laws 2 and 6). And it does not deny preferences — `rg` over `grep -r`, `| sponge` over
+`> tmp && mv`, `fd` over `find` — because those are about cost, not about a call that
+cannot work.
+
+The walls are not airtight either. A deny rule matches the command Claude's own tools
+run; it does not follow `direnv exec`, `devbox run`, or a shell script that calls the
+same thing one level down. It narrows the way in, it does not seal it.
 
 ## Instruction files and skills
 
@@ -107,10 +133,14 @@ which an agent shell cannot drive. Stay away from those. `jj split <paths>` is t
 exception — filesets select non-interactively and no editor opens. Resolve conflicts by
 editing the marked files directly, then `jj squash` or `jj new`.
 
-**Run `nix flake check` before committing in `/etc/nixos`.** It gates nixfmt, deadnix,
-shellcheck and shfmt over the tree. Nothing runs it for you: jj has no hook support and
-bypasses `.git/hooks`, so a pre-commit hook would never fire. See the inventory's
-conventions for what the gate deliberately leaves out.
+**`nix flake check` gates every commit in `/etc/nixos`.** It runs nixfmt, deadnix,
+shellcheck and shfmt over the tree. jj has no hook support and bypasses `.git/hooks`, so
+a pre-commit hook can never fire there; a `PreToolUse` hook in `managed-settings.json`
+does the job instead, running the check on `jj commit` and `jj git push` and denying the
+call when it fails. It costs about ten seconds. Run it by hand earlier if you want the
+finding sooner, and note that it only sees tracked files — a new file still has to be
+`git add`ed before the flake can fail on it. See the inventory's conventions for what
+the gate deliberately leaves out.
 
 **Commit as you go.** `jj split <paths>` separates concerns that live in different
 files and is safe — it takes filesets and only opens the diff editor with `-i` or with
@@ -142,8 +172,13 @@ Never `pip install`, never hand-activate a venv, never assume `python` resolves.
 ## Project toolchains: devenv + direnv
 
 Language toolchains are **deliberately absent system-wide** so they cannot shadow a
-project's pinned version — Rust, Node and the C toolchain among them. Do not treat the
-examples as the list; `not_installed` in the inventory is the list, and it is checked.
+project's pinned version. There is no list of them here on purpose — a list in prose
+rots, and this one is one command away and checked:
+
+```
+jq -r '.not_installed[].names[]' tools.json
+```
+
 Toolchains live in per-project `devenv.nix` (`languages.rust`, `languages.javascript`, …).
 
 An agent shell is non-interactive, so direnv's hook may not have fired and project

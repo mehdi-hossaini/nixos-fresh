@@ -6,6 +6,34 @@
     "VISUAL": "false"
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "cwd=$(jq -r '.cwd // empty')\n[ -d \"$cwd/.jj\" ] || exit 0\njq -n '{\n  hookSpecificOutput: {\n    hookEventName: \"PreToolUse\",\n    permissionDecision: \"deny\",\n    permissionDecisionReason: \"This repo is colocated (.jj is present), so a git commit is imported by jj without an operation-log entry and the change stops being undoable. Use `jj commit -m` or `jj describe -m` instead. Reading with git log / git show / git blame is unaffected.\"\n  }\n}'",
+            "timeout": 10,
+            "statusMessage": "Checking for a colocated repo"
+          },
+          {
+            "type": "command",
+            "if": "Bash(jj commit *)",
+            "command": "cwd=$(jq -r '.cwd // empty')\ncase \"$cwd\" in\n/etc/nixos | /etc/nixos/*) ;;\n*) exit 0 ;;\nesac\nout=$(nix flake check 2>&1) && exit 0\nout=$(printf '%s\\n' \"$out\" | sed 's/\\x1b\\[[0-9;]*m//g' | tail -n 40)\njq -n --arg o \"$out\" '{\n  hookSpecificOutput: {\n    hookEventName: \"PreToolUse\",\n    permissionDecision: \"deny\",\n    permissionDecisionReason: (\"`nix flake check` fails, so this would publish a tree the gate rejects. jj has no hook support and bypasses .git/hooks, so this hook is the pre-commit hook it cannot have. Fix the findings, then run the command again.\\n\" + $o)\n  }\n}'",
+            "timeout": 180,
+            "statusMessage": "Gating the commit on nix flake check"
+          },
+          {
+            "type": "command",
+            "if": "Bash(jj git push *)",
+            "command": "cwd=$(jq -r '.cwd // empty')\ncase \"$cwd\" in\n/etc/nixos | /etc/nixos/*) ;;\n*) exit 0 ;;\nesac\nout=$(nix flake check 2>&1) && exit 0\nout=$(printf '%s\\n' \"$out\" | sed 's/\\x1b\\[[0-9;]*m//g' | tail -n 40)\njq -n --arg o \"$out\" '{\n  hookSpecificOutput: {\n    hookEventName: \"PreToolUse\",\n    permissionDecision: \"deny\",\n    permissionDecisionReason: (\"`nix flake check` fails, so this would publish a tree the gate rejects. jj has no hook support and bypasses .git/hooks, so this hook is the pre-commit hook it cannot have. Fix the findings, then run the command again.\\n\" + $o)\n  }\n}'",
+            "timeout": 180,
+            "statusMessage": "Gating the push on nix flake check"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash",
@@ -23,7 +51,18 @@
   },
   "permissions": {
     "deny": [
-      "Edit(//etc/nixos/hosts/*/hardware-configuration.nix)"
+      "Edit(//etc/nixos/hosts/*/hardware-configuration.nix)",
+      "Bash(jjui *)",
+      "Bash(btop *)",
+      "Bash(fzf *)",
+      "Bash(zellij attach *)",
+      "Bash(jj split)",
+      "Bash(jj resolve)",
+      "Bash(jj diffedit *)",
+      "Bash(jj * -i *)",
+      "Bash(jj * --interactive *)",
+      "Bash(sg *)",
+      "Bash(nh os switch *)"
     ]
   }
 }

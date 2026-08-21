@@ -1,4 +1,4 @@
-# Claude Code's *rules* — the editor guard and the convention hook — are
+# Claude Code's *rules* — the editor guard, the deny list and the hooks — are
 # configuration, so they are declared here rather than hand-written into the home
 # directory. Claude Code reads /etc/claude-code/managed-settings.json ahead of
 # ~/.claude/settings.json and wins on conflict, which is what makes this the right
@@ -16,6 +16,34 @@
 # block an editor extension. It narrows the way in, it does not seal the file.
 # default.nix and disko.nix beside it are hand-written and must stay editable, hence
 # the exact filename rather than the directory.
+#
+# The rest of permissions.deny generalises that same finding. CLAUDE.md had a dozen
+# "never do X" lines, all of them handshakes of exactly the kind the deadnix pass broke.
+# The ones listed here are the subset where the command *exists on this machine and
+# succeeds at the wrong thing*: jjui/btop/fzf/`zellij attach` and jj's diff-editor forms
+# hang a session that has no terminal; `sg` is util-linux's setgid wrapper rather than
+# ast-grep; `nh os switch` reaches a sudo prompt nothing can answer. Absent tools are
+# deliberately not listed — `command not found` is already the wall for pip, python3,
+# node, cargo and wget, and a rule there would duplicate a fact the machine states
+# better. Preferences (rg over grep -r, sponge over `> tmp && mv`) stay in prose,
+# because they concern cost rather than a call that cannot work.
+#
+# Two rules are hooks instead of deny entries, because a flat pattern would be wrong
+# somewhere. `git commit` is correct in a git-only repo and only destructive in a
+# colocated one, so the PreToolUse hook looks for .jj in the working directory and
+# denies on that. And `nix flake check` is the pre-commit gate jj cannot host: jj has no
+# hook support and bypasses .git/hooks, so the check runs from a PreToolUse hook on
+# `jj commit` and `jj git push` and denies the call when it fails. Roughly ten seconds
+# on this tree, and it only fires when the working directory is /etc/nixos.
+#
+# One accepted cost: a pattern like `Bash(btop *)` also blocks `btop --version`, which
+# law 6 otherwise recommends. Deny beats allow, so no exception can be carved back out,
+# and a narrower pattern cannot express "every invocation except the informational
+# flags". Versions for these four come from tools.json or `nix eval` instead.
+#
+# Same caveat as above, one level out: a deny rule matches what Claude's own tools run.
+# It does not follow `direnv exec`, `devbox run`, or a script that calls the same
+# command a level down. It narrows the way in, it does not seal it.
 {
   environment.etc."claude-code/managed-settings.json".source = ../../claude/managed-settings.json;
 }
