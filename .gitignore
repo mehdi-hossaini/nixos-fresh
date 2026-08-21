@@ -1,0 +1,10 @@
+# `nix build` and `nh os build` drop a `result` symlink into the working copy,
+# pointing at whatever closure was built last. It was tracked until 2026-08-22,
+# which cost two things: every build dirtied the tree, so every `nix flake check`
+# opened with `warning: Git tree '/etc/nixos' is dirty` and the real signal sat
+# under a permanent false one — and a store path from this machine was published
+# to a public repo, where it resolves to nothing.
+#
+# Nothing in the tree reads ./result; it is a convenience symlink, not an input.
+result
+result-*
