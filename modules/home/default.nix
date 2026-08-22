@@ -5,62 +5,14 @@
   ...
 }:
 let
-  # Gruvbox dark. Supplied palette, used verbatim.
-  #
-  # base03 is pinned to ANSI color7 rather than the usual #a89984, which pushes
-  # the grays up one step — so color8 (bright black) takes base02 to keep the
-  # luminance ladder intact: color0 < color8 < color7 < color15.
-  theme = {
-    base00 = "#282828"; # bg / ANSI color0
-    base01 = "#3c3836"; # footer bar
-    base02 = "#504945"; # selection bg / ANSI color8
-    base03 = "#928374"; # comments / ANSI color7 — NOT base16-gruvbox's #665c54
-    base04 = "#bdae93"; # dim foreground
-    base05 = "#ebdbb2"; # body text — upstream gruvbox fg1, not base16's dimmer fg2
-    base06 = "#ebdbb2";
-    base07 = "#fbf1c7"; # ANSI color15
-    base08 = "#cc241d";
-    base09 = "#fe8019"; # orange — no ANSI slot, see indexed_colors
-    base0A = "#d79921";
-    base0B = "#98971a";
-    base0C = "#689d5a";
-    base0D = "#458588";
-    base0E = "#b16286";
-    base0F = "#d65d0e"; # orange, dark — no ANSI slot, see indexed_colors
-  };
-
-  themeBright = {
-    base08 = "#fb4934";
-    base09 = "#fe8019";
-    base0A = "#fabd2f";
-    base0B = "#b8bb26";
-    base0C = "#8ec07c";
-    base0D = "#7daea3";
-    base0E = "#d3869b";
-    base0F = "#f28534";
-  };
-
-  # A third tier, needed because themeBright moved down into the ANSI normal
-  # slots. Each value is its themeBright counterpart mixed 28% toward base07, so
-  # the hue is unchanged and only the luminance moves. That keeps normal and
-  # bright visibly different, which programs rely on for emphasis, without
-  # inventing colours that are foreign to gruvbox.
-  #
-  # Measured against the window background: 6.20:1 red through 10.74:1 yellow.
-  themeVivid = {
-    base08 = "#fb785d";
-    base0A = "#facb59";
-    base0B = "#caca53";
-    base0C = "#accd91";
-    base0D = "#a0c0ad";
-    base0E = "#dea3a7";
-  };
-
-  # Gruvbox's "hard" background, one step darker than base00. Used for the
-  # window background *only* — ANSI color0 stays base00. Without this split the
-  # two are the same value and black text renders invisible against the
-  # background it is drawn on; the gap gives color0 somewhere to be seen.
-  backgroundHard = "#1d2021";
+  # The palette moved to ./palette.nix so flake.nix can assert its contrast figures
+  # without evaluating the whole system. Same values, one import away.
+  inherit (import ./palette.nix)
+    theme
+    themeBright
+    themeVivid
+    backgroundHard
+    ;
 
   # One string, four styles. Change this to reface the terminal.
   terminalFont = "JetBrainsMono Nerd Font Mono";
@@ -176,6 +128,12 @@ in
           y = 10;
         };
         dynamic_padding = true;
+        # decorations = "Full" means the compositor draws a titlebar, and the
+        # default here is "None", which means "whatever variant the system theme
+        # is". A light titlebar above a #1d2021 terminal is the one seam in an
+        # otherwise dark window, and it is decided by something outside this file.
+        # Pin it, so the frame matches the thing it frames.
+        decorations_theme_variant = "Dark";
         # Deliberately opaque. Transparency puts a moving, arbitrary background
         # behind antialiased glyph edges, which is exactly where legibility is
         # decided — and Plasma's blur wakes the dGPU for the compositor.
@@ -214,6 +172,43 @@ in
 
       # Visual bell off. duration = 0 disables the flash entirely.
       bell.duration = 0;
+
+      # Setting `hints.enabled` REPLACES Alacritty's built-in URL hint rather than
+      # adding to it, so the default is restated verbatim below and the store-path
+      # hint sits beside it. Drop the first entry and clicking a link stops working.
+      #
+      # The second is this machine's own: a /nix/store path is the single string
+      # that appears most in a NixOS session and is the least typeable — 32 base32
+      # characters nobody will retype correctly. Ctrl+Shift+P labels every one on
+      # screen and copies the chosen one. Copy rather than open, because a store
+      # path is usually wanted as an argument to the next command, not as a folder.
+      # Ctrl+Shift+N is taken by CreateNewWindow below.
+      hints.enabled = [
+        {
+          command = "xdg-open";
+          hyperlinks = true;
+          post_processing = true;
+          persist = false;
+          mouse.enabled = true;
+          binding = {
+            key = "O";
+            mods = "Control|Shift";
+          };
+          regex = "(ipfs:|ipns:|magnet:|mailto:|gemini://|gopher://|https://|http://|news:|file:|git://|ssh:|ftp://)[^\\u0000-\\u001F\\u007F-\\u009F<>\"\\s{-}\\^⟨⟩`\\\\]+";
+        }
+        {
+          # /nix/store/<32 base32 chars>-<name>, plus any path inside it.
+          regex = "/nix/store/[0-9a-df-np-sv-z]{32}-[^\\s\"'`,;:()\\[\\]{}]+";
+          action = "Copy";
+          post_processing = false;
+          persist = false;
+          mouse.enabled = false;
+          binding = {
+            key = "P";
+            mods = "Control|Shift";
+          };
+        }
+      ];
 
       keyboard.bindings = [
         # Alacritty has no tabs by design, so a new window is the tab. This is

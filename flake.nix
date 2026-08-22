@@ -151,6 +151,63 @@
       checks = lib.genAttrs hostSystems (system: {
         formatting = (treefmtFor system).config.build.check self;
 
+        # modules/home/palette.nix carries precise contrast figures in its comments
+        # — "red 3.00:1", "6.20:1 red through 10.74:1 yellow", "7.53:1 instead of
+        # 4.47:1". Every one was accurate when measured and nothing kept them that
+        # way. A palette is exactly the kind of thing that gets a colour nudged and
+        # nobody re-measures, and the failure is silent: text that is a little
+        # harder to read is not an error anyone reports.
+        #
+        # This asserts the property those numbers exist to express — every ANSI
+        # slot that carries TEXT clears WCAG AA, 4.5:1, against the window
+        # background — rather than the numbers themselves, which would break on any
+        # deliberate change. Reads palette.nix directly, so it costs an import
+        # rather than a second nixosSystem evaluation.
+        alacritty-contrast =
+          let
+            p = import ./modules/home/palette.nix;
+            # The ANSI mapping from modules/home/default.nix. Backgrounds are absent
+            # on purpose: base00, base02 and backgroundHard are grounds, and holding
+            # a ground to a text ratio is a category error.
+            text = with p; [
+              themeBright.base08
+              themeBright.base0B
+              themeBright.base0A
+              themeBright.base0D
+              themeBright.base0E
+              themeBright.base0C
+              theme.base04
+              themeVivid.base08
+              themeVivid.base0B
+              themeVivid.base0A
+              themeVivid.base0D
+              themeVivid.base0E
+              themeVivid.base0C
+              theme.base05
+              theme.base07
+            ];
+          in
+          nixpkgs.legacyPackages.${system}.runCommandLocal "alacritty-contrast" { } ''
+            ${nixpkgs.legacyPackages.${system}.gawk}/bin/awk -v BG=${p.backgroundHard} '
+              function chan(h,   c) { c = strtonum("0x" h) / 255
+                return (c <= 0.03928) ? c / 12.92 : ((c + 0.055) / 1.055) ^ 2.4 }
+              function lum(x) { return 0.2126 * chan(substr(x, 2, 2)) \
+                                     + 0.7152 * chan(substr(x, 4, 2)) \
+                                     + 0.0722 * chan(substr(x, 6, 2)) }
+              function cr(a, b,   la, lb) { la = lum(a); lb = lum(b)
+                return (la > lb) ? (la + 0.05) / (lb + 0.05) : (lb + 0.05) / (la + 0.05) }
+              { v = cr($1, BG)
+                printf "%-9s %5.2f:1 %s\n", $1, v, (v >= 4.5 ? "ok" : "FAILS AA")
+                if (v < 4.5) bad++ }
+              END { if (bad) { printf "\n%d colour(s) below 4.5:1 on %s.\n", bad, BG
+                               print "Either raise the colour or move the ground; do not"
+                               print "loosen this check, which is the only thing keeping"
+                               print "the figures in palette.nix from becoming folklore."
+                               exit 1 } }
+            ' <<< '${lib.concatStringsSep "\n" text}'
+            touch $out
+          '';
+
         lint = git-hooks.lib.${system}.run {
           src = ./.;
           hooks = {
