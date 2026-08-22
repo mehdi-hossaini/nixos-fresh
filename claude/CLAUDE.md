@@ -76,11 +76,18 @@ here. A copy cannot be corrected from here, and a stale one outranks nothing whi
 looking authoritative — `check-conventions.sh` fails any project file repeating more than
 ten lines of this one, so a duplicated rule is caught rather than obeyed.
 
-**Skills split the same way.** One that applies everywhere is declared in
-`/etc/nixos/claude/skills/` and reaches `~/.claude/skills/` as a store symlink; one that
-applies to a single project lives in that project's `.claude/skills/`, committed to that
-project's repo — declared, just not by this one. There are currently none of the first
-kind. Nothing under `~/.claude/skills/` is hand-written, and the check asserts it.
+**Skills split the same way.** A global one is declared by this repo and reaches
+`~/.claude/skills/` as a store symlink, either written into `/etc/nixos/claude/skills/`
+or pulled from a flake input — `modules/home/skills.nix` does the latter for
+`mattpocock/skills`. One that applies to a single project lives in that project's
+`.claude/skills/`, committed there — declared, just not by this one. Nothing under
+`~/.claude/skills/` is hand-written, and the check asserts it.
+
+**A bundle carrying `.claude-plugin/plugin.json` is linked whole, never flattened.**
+Such a directory loads as `<name>@skills-dir` and its skills are namespaced
+(`/mattpocock-skills:code-review`). Unpacking it into one entry per skill throws the
+namespace away and manufactures collisions with built-ins that the plugin form does
+not have.
 
 ## Version control: jj in front, git behind
 

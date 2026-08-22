@@ -57,6 +57,16 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Claude Code skills, MIT. `flake = false` because it is a content repo, not a
+    # flake — `nix flake update` re-locks it, so there is no hand-written rev to go
+    # stale. modules/home/skills.nix reads the curated list out of its
+    # .claude-plugin/plugin.json rather than enumerating the directory, because the
+    # repo also carries skills/deprecated/ that the manifest deliberately omits.
+    mattpocock-skills = {
+      url = "github:mattpocock/skills";
+      flake = false;
+    };
+
     prismlauncher-cracked = {
       url = "github:Diegiwg/PrismLauncher-Cracked";
       inputs.nixpkgs.follows = "nixpkgs";

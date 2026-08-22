@@ -66,7 +66,10 @@ let
   terminalFont = "JetBrainsMono Nerd Font Mono";
 in
 {
-  imports = [ ./plasma.nix ];
+  imports = [
+    ./plasma.nix
+    ./skills.nix
+  ];
 
   home.username = user;
   home.homeDirectory = "/home/${user}";

@@ -133,6 +133,22 @@
         "type": "github"
       }
     },
+    "mattpocock-skills": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787309793,
+        "narHash": "sha256-FPAAotNqA5aHrFDlj/XddoLs4TDKi+4J5H/mvevlOlk=",
+        "owner": "mattpocock",
+        "repo": "skills",
+        "rev": "5b15a47f2d7150f545fbcacbfe381787fc0230dc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mattpocock",
+        "repo": "skills",
+        "type": "github"
+      }
+    },
     "nix-index-database": {
       "inputs": {
         "nixpkgs": [
@@ -235,6 +251,7 @@
         "git-hooks": "git-hooks",
         "home-manager": "home-manager",
         "impermanence": "impermanence",
+        "mattpocock-skills": "mattpocock-skills",
         "nix-index-database": "nix-index-database",
         "nixpkgs": "nixpkgs_2",
         "plasma-manager": "plasma-manager",
