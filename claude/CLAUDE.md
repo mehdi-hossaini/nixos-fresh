@@ -216,6 +216,10 @@ switch to the user. New files must be `git add`ed first or the flake cannot see 
   before the reader runs, and a dropped `&&` leaves the edit unapplied and silent.
 - `jq` for JSON; `yq` / `tomlq` / `xq` take the same syntax over YAML, TOML and XML.
   Reach for those over `sed` on structured files.
+- Never guess at a NixOS option (law 6). `nix eval --raw
+  /etc/nixos#nixosConfigurations.<host>.options.<path>.description` gives the docs and
+  `…config.<path>` the live value; `nixos-option <path>` also works. `nix eval` is
+  allow-listed, so neither prompts.
 - Do not launch interactive TUIs from an agent shell — `jjui`, `btop`, `fzf` and
   `zellij attach` among them; the inventory flags the rest in its `purpose` notes.
   `zellij action` / `zellij run` are scriptable.

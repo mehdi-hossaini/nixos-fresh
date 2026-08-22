@@ -41,25 +41,46 @@ let
   # construction and cannot go missing on their own.
   jq = "${pkgs.jq}/bin/jq";
 
-  # `nix flake check` is the pre-commit gate jj cannot host: jj has no hook
-  # support and bypasses .git/hooks, so the check runs from PreToolUse on
-  # `jj commit` and `jj git push` and denies the call when it fails. Roughly ten
-  # seconds on this tree. Only fires when the working directory is /etc/nixos.
-  flakeCheckGate = pkgs.writeShellScript "claude-gate-flake-check" ''
-    cwd=$(${jq} -r '.cwd // empty')
-    case "$cwd" in
-    /etc/nixos | /etc/nixos/*) ;;
-    *) exit 0 ;;
-    esac
-    out=$(nix flake check 2>&1) && exit 0
-    out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | tail -n 40)
-    ${jq} -n --arg o "$out" '{
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: ("`nix flake check` fails, so this would publish a tree the gate rejects. jj has no hook support and bypasses .git/hooks, so this hook is the pre-commit hook it cannot have. Fix the findings, then run the command again.\n" + $o)
-      }
-    }'
+  # The pre-commit gate jj cannot host: jj has no hook support and bypasses
+  # .git/hooks, so both checks run from PreToolUse on `jj commit` and
+  # `jj git push`. Only fires when the working directory is /etc/nixos.
+  #
+  # Two checks, cheapest first so a secret is caught before ten seconds of nix
+  # evaluation rather than after.
+  #
+  # gitleaks was installed and inventoried all along — tools.json even said to run
+  # it before pushing — and nothing ran it. check-conventions.sh scans with a
+  # hand-written four-pattern regex aimed at the shapes that matter here (private
+  # keys, age keys, $6$/$y$ hashes, quoted secret assignments); that stays, because
+  # it is targeted at this repo's actual risk. gitleaks adds ~150 rules for the
+  # cloud tokens and PATs a pasted example brings in. 0.08s over the whole tree,
+  # measured 2026-08-22, so there is no reason for it not to sit here.
+  #
+  # It scans the working tree, not history: every commit passes through this gate
+  # as a working tree first, so history stays clean by induction from a clean
+  # start (`gitleaks git /etc/nixos` was clean when this landed). For a one-off
+  # audit of history itself, run that command by hand.
+  publishGate = pkgs.writeShellScript "claude-gate-publish" ''
+        cwd=$(${jq} -r '.cwd // empty')
+        case "$cwd" in
+        /etc/nixos | /etc/nixos/*) ;;
+        *) exit 0 ;;
+        esac
+        deny() {
+          ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+          exit 0
+        }
+
+        if ! out=$(${pkgs.gitleaks}/bin/gitleaks dir /etc/nixos --no-banner 2>&1); then
+          out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | tail -n 30)
+          deny "gitleaks found something that looks like a secret. Law 7: /etc/nixos is a public repo and every nix file is copied world-readable into /nix/store, so this cannot be fixed after the fact by deleting it. Move the value to machine.secretsDir and point at the path instead.
+    $out"
+        fi
+
+        out=$(nix flake check 2>&1) && exit 0
+        out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | tail -n 40)
+        deny "\`nix flake check\` fails, so this would publish a tree the gate rejects. jj has no hook support and bypasses .git/hooks, so this hook is the pre-commit hook it cannot have. Fix the findings, then run the command again.
+    $out"
   '';
 
   # `git commit` is correct in a git-only repo and only destructive in a
@@ -233,15 +254,15 @@ let
             })
             (mkHook {
               if_ = "Bash(jj commit *)";
-              command = flakeCheckGate;
+              command = publishGate;
               timeout = 180;
-              statusMessage = "Gating the commit on nix flake check";
+              statusMessage = "Gating the commit on gitleaks + nix flake check";
             })
             (mkHook {
               if_ = "Bash(jj git push *)";
-              command = flakeCheckGate;
+              command = publishGate;
               timeout = 180;
-              statusMessage = "Gating the push on nix flake check";
+              statusMessage = "Gating the push on gitleaks + nix flake check";
             })
             (mkHook {
               if_ = "Bash(nh os build *)";
