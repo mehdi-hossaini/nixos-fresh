@@ -58,14 +58,26 @@ walls, as `permissions.deny` entries and hooks:
 - **`git commit` in a colocated repo**, decided by looking for `.jj` in the working
   directory, so a git-only repo is left alone.
 - **`jj commit` and `jj git push` in `/etc/nixos`**, gated on `nix flake check`.
+- **`nix profile add` / `install` and `nix-env -i`** — law 1's hookable slice.
+- **Activating a venv by hand** (anything naming `bin/activate`), law 1 for Python.
+- **`cmd f > f`**, where the shell empties `f` before the command reads it. Only when
+  `f` already exists; creating a new file destroys nothing.
+- **`nh os build` and `nix flake check` with an untracked `.nix` present** — the flake
+  reads the git tree, so it cannot see the file, and the deny names the ones to add.
 - **Editing `hosts/*/hardware-configuration.nix`**.
 
 One hook reports rather than blocks: a `*.sh` or `*.bash` file written through Write
 or Edit is shellchecked on the spot, at the same severity the commit gate uses, and
 the findings come back immediately. Bash typed inline into a Bash call is invisible to
-a hook and stays advisory — that split is the general method here. For any rule, ask
-what a hook can actually observe, wall off that part, and say plainly that the rest is
-still a request.
+a hook and stays advisory.
+
+That split is the method. For any rule here, two questions decide where it lives.
+**What can a hook actually observe?** — usually a slice, not the whole rule, and the
+remainder stays a request rather than being pretended into a wall. Then: **does
+violating it cost anything you cannot get back?** `grep -r` and bare `find` are every
+bit as visible as the denials above and are deliberately left in prose, because
+ignoring them costs a slower search and nothing else. A wall is worth a round trip
+only for the rules where it is not.
 
 `permissions.allow` is the same argument pointed the other way. Sessions start in auto
 mode, where a classifier reviews shell commands in place of a prompt; an allow rule

@@ -113,6 +113,89 @@ let
     }'
   '';
 
+  # ── the hookable slice of three prose rules ─────────────────────────────────
+  # Each of these was written in CLAUDE.md as "never do X" and stayed advisory
+  # until someone asked the better question: not "is this a hard error or a
+  # preference", but "what part of it can a hook actually see". The second
+  # question is necessary and not sufficient — `grep -r` and bare `find` are just
+  # as visible and are deliberately NOT here, because violating those costs a
+  # slower search and nothing else. A wall is worth a round trip only when the
+  # violation costs something you cannot get back.
+  #
+  # There is no `if` filter, because one rule string cannot express three
+  # unrelated shapes, so the prefilter below stands in for it. It is a literal
+  # match on the raw payload before any fork. `>` is common enough that the
+  # redirect arm pays a jq on many calls; measured at a few milliseconds against
+  # a 5s timeout, which is the right trade for the one irreversible rule here.
+  commandShapeGuard = pkgs.writeShellScript "claude-guard-command-shape" ''
+    input=$(cat)
+    case $input in
+    *"nix profile"* | *"nix-env"* | *"bin/activate"* | *">"*) ;;
+    *) exit 0 ;;
+    esac
+    eval "$(printf '%s' "$input" | ${jq} -r '@sh "cmd=\(.tool_input.command // "") cwd=\(.cwd // "")"')"
+    deny() {
+      ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+      exit 0
+    }
+
+    # Law 1. `install` is the old spelling, `add` the current one; both are denied
+    # so a command copied from older docs fails the same way.
+    case $cmd in
+    *"nix profile install"* | *"nix profile add"* | *"nix-env -i"* | *"nix-env --install"*)
+      deny "law 1: nothing is installed imperatively, and this would write a profile nix does not own. Persistent → modules/nixos/packages.nix (system) or modules/home/default.nix (user), then hand the switch over. One-off → nix shell nixpkgs#<pkg> -c <cmd>. Per-project → devenv.nix." ;;
+    esac
+
+    # "never hand-activate a venv" — uv is the only route to an interpreter here.
+    case $cmd in
+    *"bin/activate"*)
+      deny "law 1 for Python: activating a venv by hand puts an interpreter on PATH that nothing declares. Use uv run / uv run -m / uvx, or uv add and uv sync inside a project." ;;
+    esac
+
+    # "never `> tmp && mv tmp f`" — the half of that rule with teeth is the
+    # narrower `cmd f > f`, where the shell truncates f before the reader opens
+    # it and the contents are gone with no error. Detected by pulling the last
+    # real `>` target (>> and 2>&1 do not match) and asking whether that same
+    # word appears in the part of the command before it. Gated on the target
+    # already existing: creating a new file destroys nothing, and the check would
+    # rather miss than block a legitimate write.
+    tgt=$(printf '%s' "$cmd" | sed -n 's/^.*[^>&]>[[:space:]]*\([^[:space:];|&<>]\{1,\}\).*$/\1/p')
+    if [ -n "$tgt" ]; then
+      bef=$(printf '%s' "$cmd" | sed -n 's/^\(.*[^>&]\)>[[:space:]]*[^[:space:];|&<>]\{1,\}.*$/\1/p')
+      case " $bef " in
+      *" $tgt "*)
+        if [ -e "$tgt" ] || { [ -n "$cwd" ] && [ -e "$cwd/$tgt" ]; }; then
+          deny "'$tgt' is both an input and the redirect target: the shell truncates it before the command reads it, so the file is emptied and the command sees nothing. Edit in place with | sponge instead."
+        fi
+        ;;
+      esac
+    fi
+    exit 0
+  '';
+
+  # "New files must be `git add`ed first or the flake cannot see them." Verified
+  # 2026-08-22: a referenced-but-untracked module fails with `error: Path '…' in
+  # the repository "/etc/nixos" is not tracked by Git`. That message names the
+  # file but not the fix, and the fix is non-obvious in a colocated repo, where
+  # jj already considers the file tracked and only the git index is behind. So
+  # this denies early and says the command to run.
+  untrackedNixGuard = pkgs.writeShellScript "claude-guard-untracked-nix" ''
+    cwd=$(${jq} -r '.cwd // empty')
+    case "$cwd" in
+    /etc/nixos | /etc/nixos/*) ;;
+    *) exit 0 ;;
+    esac
+    files=$(git -C /etc/nixos ls-files --others --exclude-standard -- '*.nix' 2>/dev/null)
+    [ -n "$files" ] || exit 0
+    ${jq} -n --arg f "$files" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: ("the flake reads the git tree, so an untracked .nix is invisible to it and evaluation fails on the first module that imports one. Run `git add` on these first:\n" + $f)
+      }
+    }'
+  '';
+
   mkHook =
     {
       if_,
@@ -160,6 +243,24 @@ let
               timeout = 180;
               statusMessage = "Gating the push on nix flake check";
             })
+            (mkHook {
+              if_ = "Bash(nh os build *)";
+              command = untrackedNixGuard;
+              timeout = 10;
+              statusMessage = "Checking for untracked nix files";
+            })
+            (mkHook {
+              if_ = "Bash(nix flake check *)";
+              command = untrackedNixGuard;
+              timeout = 10;
+              statusMessage = "Checking for untracked nix files";
+            })
+            {
+              type = "command";
+              command = "${commandShapeGuard}";
+              timeout = 10;
+              statusMessage = "Checking the command shape";
+            }
           ];
         }
       ];
