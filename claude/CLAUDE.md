@@ -43,65 +43,24 @@ machine.
 ## What is enforced, and what is only written down
 
 A rule in prose is a handshake; a rule in the generated managed settings is a wall.
-Both are here, and the difference decides how carefully a line needs reading. The
-walls, as `permissions.deny` entries and hooks:
+The walls are not listed here on purpose — each one denies with its own explanation
+at the moment it is hit, so restating them would spend context in every session to
+prevent what a hook already prevents. `modules/nixos/claude.nix` is the list, and
+carries the reasoning for each. **A deny from a hook is the guard working: read the
+reason and comply rather than routing around it.**
 
-- **TUIs that would hang the session.** Not a list — `jq -r '[.tools[] |
-  .agent_unsafe // empty | .[]] | unique[]' tools.json` is the list, and
-  `modules/nixos/claude.nix` builds a `Bash(<prefix> *)` deny from each. Marking a
-  tool interactive in the inventory is what denies it.
-- **jj's diff editor** — bare `jj split`, bare `jj resolve`, `jj diffedit`, and any
-  `jj … -i` / `--interactive`. Subcommand shapes, not inventory facts, so these stay
-  literal.
-- **`sg`**, which here is util-linux's setgid wrapper and not ast-grep.
-- **`nh os switch`**, whose sudo prompt no Claude session can answer (law 3).
-- **`git commit` in a colocated repo**, decided by looking for `.jj` in the working
-  directory, so a git-only repo is left alone.
-- **`jj commit` and `jj git push` in `/etc/nixos`**, gated on `nix flake check`.
-- **`nix profile add` / `install` and `nix-env -i`** — law 1's hookable slice.
-- **Activating a venv by hand** (anything naming `bin/activate`), law 1 for Python.
-- **`cmd f > f`**, where the shell empties `f` before the command reads it. Only when
-  `f` already exists; creating a new file destroys nothing.
-- **`nh os build` and `nix flake check` with an untracked `.nix` present** — the flake
-  reads the git tree, so it cannot see the file, and the deny names the ones to add.
-- **Editing `hosts/*/hardware-configuration.nix`**.
+Two consequences worth carrying in advance, because they change what you plan rather
+than only what you type. `nh os switch` is denied, so take the work to a clean `nh os
+build` and hand the switch over. And a `*.sh` or `*.bash` file written through Write
+or Edit is shellchecked on the spot, so findings arrive at write time rather than at
+the commit gate.
 
-One hook reports rather than blocks: a `*.sh` or `*.bash` file written through Write
-or Edit is shellchecked on the spot, at the same severity the commit gate uses, and
-the findings come back immediately. Bash typed inline into a Bash call is invisible to
-a hook and stays advisory.
-
-That split is the method. For any rule here, two questions decide where it lives.
-**What can a hook actually observe?** — usually a slice, not the whole rule, and the
-remainder stays a request rather than being pretended into a wall. Then: **does
-violating it cost anything you cannot get back?** `grep -r` and bare `find` are every
-bit as visible as the denials above and are deliberately left in prose, because
-ignoring them costs a slower search and nothing else. A wall is worth a round trip
-only for the rules where it is not.
-
-`permissions.allow` is the same argument pointed the other way. Sessions start in auto
-mode, where a classifier reviews shell commands in place of a prompt; an allow rule
-resolves before that runs. The reading half of the workflow is on the list — `rg`, `fd`,
-`jq`, `jj st`/`log`/`diff`/`show`/`file list`/`op log`/`bookmark list`, `nix eval`, `nix
-flake check`, `nh os build`, and `check-conventions.sh` — so what still gets reviewed is
-the half that changes something, and a refusal there means something.
-
-Three you might expect and will not find. `sed -n` still prompts, because `-n` does not
-stop sed's `w` command writing a file. `devenv shell --` still prompts, because it runs
-whatever follows it. `awk` still prompts, because it can redirect from inside its own
-program. And `<tool> --version` is not allowlisted despite law 6: auto mode drops
-leading-wildcard rules, so the entry would not survive.
-
-Two things the deny list deliberately leaves out. It does not deny what is already absent:
-`command not found` is the wall for `pip`, `python3`, `node`, `cargo` and `wget`
-already, and a rule there would be a second copy of a fact the machine states better
-(laws 2 and 6). And it does not deny preferences — `rg` over `grep -r`, `| sponge` over
-`> tmp && mv`, `fd` over `find` — because those are about cost, not about a call that
-cannot work.
-
-The walls are not airtight either. A deny rule matches the command Claude's own tools
-run; it does not follow `direnv exec`, `devbox run`, or a shell script that calls the
-same thing one level down. It narrows the way in, it does not seal it.
+Where a *new* rule belongs takes two questions. **What can a hook actually observe?**
+Usually a slice, not the whole rule; the remainder stays a request rather than being
+pretended into a wall. Then: **does violating it cost anything you cannot get back?**
+`grep -r` and bare `find` are as visible as anything on the wall list and are
+deliberately left in prose, because ignoring them costs a slower search and nothing
+else.
 
 ## Instruction files and skills
 
