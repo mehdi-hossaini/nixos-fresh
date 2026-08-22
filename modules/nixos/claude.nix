@@ -73,6 +73,26 @@ let
       escalate "guard could not parse the hook payload as JSON, so it cannot tell whether its rule applies. Asking rather than assuming: a guard that stays quiet when confused is a wall that is trusted and absent."
     [ -n "$cwd" ] ||
       escalate "the hook payload carried no cwd, so this guard cannot tell whether its rule applies here. Asking rather than assuming."
+    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty') ||
+      escalate "guard could not read the command out of the hook payload."
+  '';
+
+  # An `if` filter is a precondition, and a precondition you do not check is one you
+  # are guessing at. Measured 2026-08-22: when Claude Code cannot fully parse a Bash
+  # command — a heredoc carrying awk ternaries was enough — it runs hooks whose `if`
+  # would not otherwise match. That is the right call on its side, since a guard is
+  # cheaper than a miss. But a guard reached that way has been handed a command it
+  # was never written to judge, and `colocatedCommitGuard` denied it anyway, because
+  # the only thing establishing "this is a git commit" lived outside the guard.
+  #
+  # So each guard re-establishes its own trigger from `$cmd` before acting. Narrowing
+  # the input inside the function rather than assuming it outside is the same fix as
+  # the totality one above, one level up.
+  requires = pattern: ''
+    case "$cmd" in
+    ${pattern}) ;;
+    *) exit 0 ;;
+    esac
   '';
 
   # The pre-commit gate jj cannot host: jj has no hook support and bypasses
@@ -96,6 +116,7 @@ let
   # audit of history itself, run that command by hand.
   publishGate = pkgs.writeShellScript "claude-gate-publish" ''
     ${guardPreamble}
+    ${requires ''*"jj commit"* | *"jj git push"*''}
         case "$cwd" in
         /etc/nixos | /etc/nixos/*) ;;
         # Total, not a shrug: a cwd outside this repo is definitely not this
@@ -124,6 +145,7 @@ let
   # working directory and denies on that.
   colocatedCommitGuard = pkgs.writeShellScript "claude-guard-git-commit" ''
     ${guardPreamble}
+    ${requires ''*"git commit"*''}
     # Total: .jj either is or is not there, and the preamble guaranteed a cwd.
     [ -d "$cwd/.jj" ] || exit 0
     ${jq} -n '{
@@ -253,6 +275,7 @@ let
   # this denies early and says the command to run.
   untrackedNixGuard = pkgs.writeShellScript "claude-guard-untracked-nix" ''
     ${guardPreamble}
+    ${requires ''*"nh os build"* | *"nix flake check"*''}
     case "$cwd" in
     /etc/nixos | /etc/nixos/*) ;;
     *) exit 0 ;;
