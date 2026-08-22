@@ -75,10 +75,10 @@ looking authoritative — `check-conventions.sh` fails any project file repeatin
 ten lines of this one, so a duplicated rule is caught rather than obeyed.
 
 **Skills split the same way.** One that applies everywhere is declared in
-`/etc/nixos/claude/skills/` and reaches `~/.claude/skills/` as a store symlink — `unslop`
-is the only one. One that applies to a single project lives in that project's
-`.claude/skills/`, committed to that project's repo: declared, just not by this one.
-Nothing under `~/.claude/skills/` is hand-written, and the check asserts it.
+`/etc/nixos/claude/skills/` and reaches `~/.claude/skills/` as a store symlink; one that
+applies to a single project lives in that project's `.claude/skills/`, committed to that
+project's repo — declared, just not by this one. There are currently none of the first
+kind. Nothing under `~/.claude/skills/` is hand-written, and the check asserts it.
 
 ## Version control: jj in front, git behind
 

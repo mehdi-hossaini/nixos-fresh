@@ -372,9 +372,12 @@ in
       source = ../../claude/check-conventions.sh;
       executable = true;
     };
-    # Vendored from github.com/cursor/plugins (pstack/skills/unslop), which
-    # carries no licence file. Kept verbatim and attributed here rather than
-    # reworded, so the provenance stays obvious if that ever needs revisiting.
-    ".claude/skills/unslop/SKILL.md".source = ../../claude/skills/unslop/SKILL.md;
+    # No skills are declared. `unslop` (vendored from cursor/plugins) was the only
+    # one and was dropped 2026-08-22: its own description claimed it must always
+    # apply, so its ~6.6 KB body loaded on essentially every session that wrote
+    # prose, which is a standing cost for a style guide. The split it illustrated
+    # still holds — a global skill belongs here, a project one in that project's
+    # own repo — and check-conventions.sh keeps asserting that nothing under
+    # ~/.claude/skills is hand-written, so the rule outlives the example.
   };
 }
