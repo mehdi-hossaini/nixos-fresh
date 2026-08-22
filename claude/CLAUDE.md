@@ -7,7 +7,9 @@ derive it from here rather than guessing.
    switch`. One-off → `nix shell nixpkgs#<pkg> -c`. Per-project → `devenv.nix`.
 2. **A missing tool is a decision, not a breakage.** `command not found` means the
    absence is deliberate — usually so a system copy cannot shadow a project's pinned
-   toolchain. Look it up in the inventory; never install around it.
+   toolchain. Look it up in the inventory, and `nix-locate bin/<name>` when it is not
+   there — that says which package ships it, which is what you need to borrow it with
+   `nix shell` rather than install around it.
 3. **No prompt can be answered.** No terminal, no display: an editor, a password, a TUI
    or an askpass dialog fails or hangs rather than waiting. Known instances are `EDITOR`
    (pinned to `false`), `sudo` behind `nh os switch`, and git askpass on an HTTPS remote

@@ -151,13 +151,16 @@
               excludes = generatedNix;
             };
             shellcheck.enable = true;
-            # statix is deliberately NOT gated, though the conventions list it. It
-            # reports ~20 pre-existing findings, nearly all `repeated_keys` — it
-            # wants boot.loader and boot.initrd merged into one attrset, where this
-            # config writes flat paths with a comment above each. That is a style
-            # disagreement, not a defect, and gating would mean rewriting twenty
-            # sites or muting the lint. Its hook ignores `excludes` too, so it
-            # cannot skip the generated file. Run `statix check .` by hand.
+            # statix went ungated for as long as the style disagreement was written
+            # down instead of configured: it wanted boot.loader and boot.initrd
+            # merged where this config writes flat paths with a comment above each.
+            # statix.toml at the repo root now disables that rule and three other
+            # house-style ones, which drops the tree to zero findings and makes
+            # every OTHER lint it has enforceable — those were the real cost of
+            # leaving it off. The excludes problem went with it: hardware-
+            # configuration.nix was only ever flagged by repeated_keys, so with that
+            # off it needs no exclusion. Verified 2026-08-22.
+            statix.enable = true;
           };
         };
       });

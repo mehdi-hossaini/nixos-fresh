@@ -1,0 +1,38 @@
+# statix lint config, so `nix flake check` can gate statix at all.
+#
+# Undotted on purpose. statix auto-discovers `statix.toml` and does NOT find a
+# dotted `.statix.toml` — that name only works if every caller passes --config,
+# and a by-hand `statix check .` would then silently report the 13 house-style
+# findings this file exists to silence. Same name for the gate and the hand-run.
+#
+# tools.json has said "statix is deliberately NOT gated — run `statix check .` by
+# hand and judge" since it was written, and nothing ever ran it. That left every
+# lint statix has unenforced, not just the two the config disagrees with. The
+# disagreement is a configuration problem, and this is the configuration.
+#
+# Measured 2026-08-22 before writing this: 13 findings, all of them house style.
+#   repeated_keys (9) — this config writes flat dotted paths with a comment above
+#                     each (fileSystems."/persistent".*, nix.settings, environment.*).
+#                     statix wants them merged into one nested attrset, which would
+#                     move each comment away from the line it explains.
+#   manual_inherit (2) — `prismlauncher-cracked = inputs.prismlauncher-cracked;` at
+#                     an `import` and an `.override` call site. The explicit form
+#                     shows what is being passed where `inherit (inputs) …` hides it.
+#   empty_pattern (2) — `{ ... }:` is the conventional NixOS module header. statix
+#                     wants `_:`. Both appear in this tree already; neither is wrong.
+# manual_inherit_from is disabled alongside manual_inherit for the same reason,
+# pre-emptively, so the pair cannot disagree as the tree grows.
+#
+# Everything else stays on and is now enforced: useless_parens, bool_comparison,
+# bool_simplification, eta_reduction, legacy_let_syntax, collapsible_let_in,
+# unquoted_uri, useless_has_attr, deprecated_to_path, and the rest.
+#
+# hosts/*/hardware-configuration.nix needs no exclusion here, unlike the nixfmt and
+# deadnix passes: with repeated_keys off it is clean, and it was only ever the
+# repeated_keys rule that flagged it. Verified, not assumed.
+disabled = [
+  "repeated_keys",
+  "manual_inherit",
+  "manual_inherit_from",
+  "empty_pattern",
+]
