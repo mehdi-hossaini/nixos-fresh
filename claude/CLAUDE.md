@@ -3,8 +3,11 @@
 Seven laws. Everything below is a consequence of them — when a situation is not covered,
 derive it from here rather than guessing.
 
-1. **Nothing is installed imperatively.** Persistent → `/etc/nixos`, then `nh os
-   switch`. One-off → `nix shell nixpkgs#<pkg> -c`. Per-project → `devenv.nix`.
+1. **Nothing is installed imperatively.** Persistent → `/etc/nixos`
+   (`modules/nixos/packages.nix` for the system, `modules/home/default.nix` for the
+   user), taken to a clean `nh os build` and then handed over — the switch itself is
+   denied here and is the user's to run (law 3). One-off → `nix shell nixpkgs#<pkg>
+   -c`. Per-project → `devenv.nix`.
 2. **A missing tool is a decision, not a breakage.** `command not found` means the
    absence is deliberate — usually so a system copy cannot shadow a project's pinned
    toolchain. Look it up in the inventory, and `nix-locate bin/<name>` when it is not
@@ -23,7 +26,8 @@ derive it from here rather than guessing.
    Only `~/.claude/settings.json` is writable in place; it holds state (theme), not
    rules.
 5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
-   paths outlive a reboot. Use the session scratchpad, never the home root.
+   paths outlive a reboot, and `modules/nixos/impermanence.nix` is the list. Use the
+   session scratchpad the harness names at startup, never the home root.
 6. **Nothing here is known from memory.** A version, a flag's argument order, whether a
    command opens a TUI, what a file already says — each is one command away, and the
    guess has been wrong often enough that checking is the cheaper habit. `<tool>
@@ -42,6 +46,12 @@ disagree the inventory wins, and `bash ~/.claude/check-conventions.sh` is what s
 it derives its expectations from the inventory and verifies them against the live
 machine.
 
+Two obligations follow from law 6. **A new assertion or guard is not finished until it
+has been watched going red on purpose** — the `INVENTORY=` / `MANAGED=` / `SETTINGS=` /
+`GUARDS=` overrides exist for that, or a doctored binary earlier on `PATH`. And **a law
+that cannot be followed from its own text is incomplete**: say where the missing step
+lives, or the gap gets filled by guessing.
+
 ## What is enforced, and what is only written down
 
 A rule in prose is a handshake; a rule in the generated managed settings is a wall.
@@ -56,6 +66,24 @@ than only what you type. `nh os switch` is denied, so take the work to a clean `
 build` and hand the switch over. And a `*.sh` or `*.bash` file written through Write
 or Edit is shellchecked on the spot, so findings arrive at write time rather than at
 the commit gate.
+
+## Say the shape before doing the work
+
+Before anything multi-step or irreversible, state these seven lines. Nothing at all
+before a one-line edit.
+
+```
+DELIVERABLE   the noun that exists when this is done
+PRECONDITION  what must already be true to start
+POSTCONDITION what is true afterwards, stated so it can be checked
+FAILURE       the named ways this ends badly, as outcomes not surprises
+INVARIANT     what must be unchanged when it is over
+VERIFY        the exact command whose result decides success
+EFFECTS       which single step is irreversible, and where
+```
+
+`VERIFY` earns the most: naming the observable before starting is what stops three
+probes that each tested something else.
 
 Where a *new* rule belongs takes two questions. **What can a hook actually observe?**
 Usually a slice, not the whole rule; the remainder stays a request rather than being

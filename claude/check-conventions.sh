@@ -20,6 +20,7 @@ MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
 REPO=${REPO:-/etc/nixos}
 SKILLS=${SKILLS:-$HOME/.claude/skills}
+GUARDS=${GUARDS:-/etc/nixos/modules/nixos/claude.nix}
 # Files this repo declares into ~/.claude. Each must end up a nix-store symlink;
 # a plain file there means someone edited the copy instead of the source.
 DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh")
@@ -221,6 +222,34 @@ git@* | ssh://*) ok "$REPO pushes over SSH — git's askpass never runs" ;;
 "") bad "$REPO has no origin remote" ;;
 *) bad "$REPO origin is '$origin_url' — an HTTPS remote makes git call ksshaskpass, which an agent shell cannot answer" ;;
 esac
+
+# ── a mechanism and the rule it implements must stay connected ────────────────
+# Guards cite the law they serve, in the comment and in the deny message the agent
+# reads: "law 1: nothing is installed imperatively…", "(law 3)". That citation is
+# the only thread from a mechanism back to the rule it enforces — nothing else
+# links prose to the hook implementing a slice of it, so renumbering or retiring a
+# law leaves the citations pointing at nothing while still looking authoritative.
+head_ "Law citations"
+nlaws=$(grep -cE '^[0-9]+\. \*\*' "$HOME/.claude/CLAUDE.md")
+if [ "$nlaws" -eq 0 ]; then
+  bad "no numbered laws found in $HOME/.claude/CLAUDE.md — every citation in $GUARDS points at nothing"
+elif [ ! -f "$GUARDS" ]; then
+  bad "$GUARDS missing — the guards it declares are what the citations live in"
+else
+  dangling=()
+  cited=0
+  while read -r n; do
+    cited=$((cited + 1))
+    { [ "$n" -ge 1 ] && [ "$n" -le "$nlaws" ]; } || dangling+=("$n")
+  done < <(grep -oiE 'law [0-9]+' "$GUARDS" | grep -oE '[0-9]+' | sort -un)
+  if [ ${#dangling[@]} -eq 0 ]; then
+    ok "all $cited laws cited by a guard exist among the $nlaws in CLAUDE.md"
+  else
+    for d in "${dangling[@]}"; do
+      bad "a guard in $GUARDS cites 'law $d', but CLAUDE.md declares only $nlaws laws"
+    done
+  fi
+fi
 
 # ── law 5: the harness only survives a reboot because these are declared ──────
 head_ "Persistence"

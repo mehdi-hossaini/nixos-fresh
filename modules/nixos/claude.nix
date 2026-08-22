@@ -41,6 +41,40 @@ let
   # construction and cannot go missing on their own.
   jq = "${pkgs.jq}/bin/jq";
 
+  # ── every guard is total ────────────────────────────────────────────────────
+  # A guard that cannot understand its input used to `exit 0`, which reads as
+  # "allow". Every one of these extracts `.cwd // empty` and then tests it, so a
+  # payload without a cwd — a shape change upstream, a malformed line — produced an
+  # empty string, matched no branch, and let the call through. It looked like a
+  # wall and was a hole, and the hole was silent, which is the worst combination
+  # because the wall is trusted.
+  #
+  # Exiting 0 is only honest when it means "this input is definitely not my
+  # business". It is not honest when it means "I could not tell".
+  #
+  # The undecidable case escalates rather than denying. Denying would be the safe
+  # reflex, but a payload shape change would then block every Bash call in the
+  # session with no way through; escalating asks the user, which is the one answer
+  # that is never silently wrong. PostToolUse has no such control — it reports
+  # rather than blocks, and cannot allow anything by staying quiet — so the two
+  # hooks below carry `set -u` and nothing more.
+  escalateFn = ''
+    escalate() {
+      ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"escalate",permissionDecisionReason:$r}}'
+      exit 0
+    }
+  '';
+
+  guardPreamble = ''
+    set -u
+    ${escalateFn}
+    input=$(cat)
+    cwd=$(printf '%s' "$input" | ${jq} -r '.cwd // empty') ||
+      escalate "guard could not parse the hook payload as JSON, so it cannot tell whether its rule applies. Asking rather than assuming: a guard that stays quiet when confused is a wall that is trusted and absent."
+    [ -n "$cwd" ] ||
+      escalate "the hook payload carried no cwd, so this guard cannot tell whether its rule applies here. Asking rather than assuming."
+  '';
+
   # The pre-commit gate jj cannot host: jj has no hook support and bypasses
   # .git/hooks, so both checks run from PreToolUse on `jj commit` and
   # `jj git push`. Only fires when the working directory is /etc/nixos.
@@ -61,9 +95,11 @@ let
   # start (`gitleaks git /etc/nixos` was clean when this landed). For a one-off
   # audit of history itself, run that command by hand.
   publishGate = pkgs.writeShellScript "claude-gate-publish" ''
-        cwd=$(${jq} -r '.cwd // empty')
+    ${guardPreamble}
         case "$cwd" in
         /etc/nixos | /etc/nixos/*) ;;
+        # Total, not a shrug: a cwd outside this repo is definitely not this
+        # gate's business, and the preamble has already ruled out "cannot tell".
         *) exit 0 ;;
         esac
         deny() {
@@ -87,7 +123,8 @@ let
   # colocated one, so this cannot be a flat deny pattern. It looks for .jj in the
   # working directory and denies on that.
   colocatedCommitGuard = pkgs.writeShellScript "claude-guard-git-commit" ''
-    cwd=$(${jq} -r '.cwd // empty')
+    ${guardPreamble}
+    # Total: .jj either is or is not there, and the preamble guaranteed a cwd.
     [ -d "$cwd/.jj" ] || exit 0
     ${jq} -n '{
       hookSpecificOutput: {
@@ -107,6 +144,7 @@ let
   # tracked shell files are clean at default severity with -x.
   # exit 2 is what feeds the findings back into the conversation.
   shellcheckGate = pkgs.writeShellScript "claude-gate-shellcheck" ''
+    set -u
     f=$(${jq} -r '.tool_input.file_path // empty')
     case "$f" in
     *.sh | *.bash) ;;
@@ -122,6 +160,7 @@ let
   # CLAUDE.md claim. This is the only mechanism that notices, and it reports into
   # the conversation rather than into a log nobody reads.
   conventionsCheck = pkgs.writeShellScript "claude-check-conventions" ''
+    set -u
     out=$(bash ~/.claude/check-conventions.sh 2>&1); rc=$?
     [ $rc -eq 0 ] && exit 0
     out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'FAIL|failed$')
@@ -149,12 +188,24 @@ let
   # redirect arm pays a jq on many calls; measured at a few milliseconds against
   # a 5s timeout, which is the right trade for the one irreversible rule here.
   commandShapeGuard = pkgs.writeShellScript "claude-guard-command-shape" ''
+    set -u
+    ${escalateFn}
     input=$(cat)
+    # This arm is total rather than a shrug, and it is why this one guard does not
+    # use guardPreamble: the test is a literal substring match on the raw payload,
+    # which cannot fail to parse. A payload containing none of these literals
+    # definitely does not contain a command this guard has an opinion about, so
+    # allowing it is an answer, not a guess — and the jq fork is skipped on the
+    # majority of Bash calls, which is the point of testing here first.
     case $input in
     *"nix profile"* | *"nix-env"* | *"bin/activate"* | *">"*) ;;
     *) exit 0 ;;
     esac
-    eval "$(printf '%s' "$input" | ${jq} -r '@sh "cmd=\(.tool_input.command // "") cwd=\(.cwd // "")"')"
+    parsed=$(printf '%s' "$input" | ${jq} -r '@sh "cmd=\(.tool_input.command // "") cwd=\(.cwd // "")"') ||
+      escalate "guard could not parse a hook payload that looked like it contained a guarded command shape. Asking rather than assuming."
+    eval "$parsed"
+    [ -n "$cmd" ] ||
+      escalate "the hook payload carried no command, so this guard cannot inspect its shape. Asking rather than assuming."
     deny() {
       ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
       exit 0
@@ -201,7 +252,7 @@ let
   # jj already considers the file tracked and only the git index is behind. So
   # this denies early and says the command to run.
   untrackedNixGuard = pkgs.writeShellScript "claude-guard-untracked-nix" ''
-    cwd=$(${jq} -r '.cwd // empty')
+    ${guardPreamble}
     case "$cwd" in
     /etc/nixos | /etc/nixos/*) ;;
     *) exit 0 ;;
@@ -354,6 +405,15 @@ let
         "Bash(bash ~/.claude/check-conventions.sh)"
       ];
 
+      # A smell to watch, not a rule to enforce: an allow rule that needs deny rules
+      # to fence it was too wide to begin with. `Bash(fd *)` granted everything fd
+      # can do, `-x` included, and six patterns below subtract that back out —
+      # argument-position matching, which Claude Code's own docs call fragile. The
+      # same shape is latent in `Bash(rg *)`, since `rg --pre` also executes. Both
+      # are left as they are; the fence works and is tested. But prefer allowing the
+      # specific invocations actually run over allowing a tool and subtracting from
+      # it, because a contract is tight when it accepts the least it needs.
+      #
       # Two categories deliberately absent from this list. It does not deny what
       # the machine already refuses: `command not found` is the wall for pip,
       # python3, node, cargo and wget, and a rule there would be a second copy of
