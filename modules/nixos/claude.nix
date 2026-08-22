@@ -157,6 +157,63 @@ let
     }'
   '';
 
+  # Same check as the nh hook below, at the other end of the session.
+  #
+  # check-conventions.sh decides whether CLAUDE.md and tools.json can be trusted,
+  # and until now it only ran AFTER a rebuild. Everything that happens between
+  # rebuilds was therefore invisible to it: a flake update, a tool that stopped
+  # resolving, a claim that quietly stopped being true while nobody rebuilt. A
+  # session could run for hours on instructions that had already gone stale, and
+  # the mechanism that would have said so was waiting for a trigger that never
+  # came.
+  #
+  # 0.29s measured 2026-08-22, which is what makes this affordable at every
+  # startup rather than a thing to run when you remember. Quiet on success:
+  # nothing is printed when 29 assertions hold, so the cost is the runtime and no
+  # context at all.
+  sessionStartCheck = pkgs.writeShellScript "claude-session-start-check" ''
+    set -u
+    out=$(bash ~/.claude/check-conventions.sh 2>&1) && exit 0
+    out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'FAIL|failed$')
+    ${jq} -n --arg o "$out" '{
+      systemMessage: "Convention check FAILED at session start — the machine no longer matches what tools.json and CLAUDE.md claim.",
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: ("check-conventions.sh is failing before any work has been done, so this session began with instructions that are already wrong somewhere. Treat CLAUDE.md and tools.json as suspect until it is green, and fix it before trusting either.\n" + $o)
+      }
+    }'
+  '';
+
+  # Law 3 says work to the last step that needs no answer, then hand over. That
+  # hand-over has been a thing the agent remembers to say, which means it is a
+  # thing the agent can forget to say — and twice on 2026-08-22 a session went on
+  # working against a live config that no longer matched what had been built,
+  # because the switch was never mentioned and never happened.
+  #
+  # So it is recorded rather than remembered. The PostToolUse hook on `nh os
+  # build` writes the toplevel it produced; this compares that against the system
+  # actually running and reports the gap when the session ends. A readlink and a
+  # file read, and it says WHAT is pending rather than nagging in general.
+  builtMarker = "$XDG_RUNTIME_DIR/claude-nixos-built";
+
+  recordBuild = pkgs.writeShellScript "claude-record-build" ''
+    set -u
+    p=$(nix eval --raw /etc/nixos#nixosConfigurations."$(hostname)".config.system.build.toplevel.outPath 2>/dev/null) || exit 0
+    [ -n "$p" ] && printf '%s' "$p" > ${builtMarker}
+    exit 0
+  '';
+
+  handoffOnStop = pkgs.writeShellScript "claude-handoff-on-stop" ''
+    set -u
+    [ -r ${builtMarker} ] || exit 0
+    built=$(cat ${builtMarker}) || exit 0
+    running=$(readlink -f /run/current-system 2>/dev/null) || exit 0
+    [ "$built" != "$running" ] || exit 0
+    ${jq} -n --arg b "$built" '{
+      systemMessage: ("A NixOS configuration was built this session and is not the one running. Activation escalates to sudo, which no Claude session can answer (law 3), so it is yours:\n\n    nh os switch /etc/nixos\n\nbuilt: " + $b)
+    }'
+  '';
+
   # The hookable slice of "shellcheck every non-trivial bash you write": a file
   # written through Write or Edit is visible to a hook, so it gets linted the
   # moment it lands. Bash typed inline into a Bash call is not, and stays
@@ -381,6 +438,41 @@ let
               timeout = 30;
               statusMessage = "Checking machine conventions";
             })
+            (mkHook {
+              if_ = "Bash(nh os build *)";
+              command = recordBuild;
+              timeout = 60;
+              statusMessage = "Recording the built generation";
+            })
+          ];
+        }
+      ];
+
+      # No matcher: every way a session begins — startup, resume, clear, compact,
+      # fork — begins on the same instructions, and any of them can begin on
+      # instructions that went stale since the last one.
+      SessionStart = [
+        {
+          hooks = [
+            {
+              type = "command";
+              command = "${sessionStartCheck}";
+              timeout = 30;
+              statusMessage = "Checking machine conventions";
+            }
+          ];
+        }
+      ];
+
+      Stop = [
+        {
+          hooks = [
+            {
+              type = "command";
+              command = "${handoffOnStop}";
+              timeout = 10;
+              statusMessage = "Checking for an unswitched generation";
+            }
           ];
         }
       ];
