@@ -14,8 +14,8 @@
     ./desktop.nix
     ./hardware.nix
     ./packages.nix
-    ./brave.nix
     ./claude.nix
+    ./codex.nix
     ./home-manager.nix
   ];
 

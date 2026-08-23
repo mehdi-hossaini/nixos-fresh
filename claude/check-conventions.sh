@@ -20,7 +20,15 @@ MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
 REPO=${REPO:-/etc/nixos}
 SKILLS=${SKILLS:-$HOME/.claude/skills}
-GUARDS=${GUARDS:-/etc/nixos/modules/nixos/claude.nix}
+# Every file that declares a guard, not just claude.nix. The citations moved when
+# the guards were factored into agent-guards.nix and codex.nix was added, and a
+# check still scanning one file would have gone on passing while silently
+# asserting less — which is the failure this check exists to catch, turned on
+# itself. Space-separated, so the GUARDS= override still takes one path or many.
+GUARDS_DEFAULT="/etc/nixos/modules/nixos/claude.nix\
+ /etc/nixos/modules/nixos/agent-guards.nix\
+ /etc/nixos/modules/nixos/codex.nix"
+read -r -a GUARDS <<<"${GUARDS:-$GUARDS_DEFAULT}"
 # Files this repo declares into ~/.claude. Each must end up a nix-store symlink;
 # a plain file there means someone edited the copy instead of the source.
 DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh")
@@ -230,23 +238,29 @@ esac
 # links prose to the hook implementing a slice of it, so renumbering or retiring a
 # law leaves the citations pointing at nothing while still looking authoritative.
 head_ "Law citations"
+missing_guards=()
+for g in "${GUARDS[@]}"; do
+  [ -f "$g" ] || missing_guards+=("$g")
+done
 nlaws=$(grep -cE '^[0-9]+\. \*\*' "$HOME/.claude/CLAUDE.md")
 if [ "$nlaws" -eq 0 ]; then
-  bad "no numbered laws found in $HOME/.claude/CLAUDE.md — every citation in $GUARDS points at nothing"
-elif [ ! -f "$GUARDS" ]; then
-  bad "$GUARDS missing — the guards it declares are what the citations live in"
+  bad "no numbered laws found in $HOME/.claude/CLAUDE.md — every citation in ${GUARDS[*]} points at nothing"
+elif [ ${#missing_guards[@]} -gt 0 ]; then
+  for g in "${missing_guards[@]}"; do
+    bad "$g missing — the guards it declares are what the citations live in"
+  done
 else
   dangling=()
   cited=0
   while read -r n; do
     cited=$((cited + 1))
     { [ "$n" -ge 1 ] && [ "$n" -le "$nlaws" ]; } || dangling+=("$n")
-  done < <(grep -oiE 'law [0-9]+' "$GUARDS" | grep -oE '[0-9]+' | sort -un)
+  done < <(grep -hoiE 'law [0-9]+' "${GUARDS[@]}" | grep -oE '[0-9]+' | sort -un)
   if [ ${#dangling[@]} -eq 0 ]; then
     ok "all $cited laws cited by a guard exist among the $nlaws in CLAUDE.md"
   else
     for d in "${dangling[@]}"; do
-      bad "a guard in $GUARDS cites 'law $d', but CLAUDE.md declares only $nlaws laws"
+      bad "a guard in ${GUARDS[*]} cites 'law $d', but CLAUDE.md declares only $nlaws laws"
     done
   fi
 fi

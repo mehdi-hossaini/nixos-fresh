@@ -140,6 +140,10 @@ in
     # temp+rename, so CLAUDE_CONFIG_DIR (modules/home) moves the json in here
     # instead and one directory covers everything.
     ".claude"
+    # Codex: credentials, session history and config.toml. Same argument as
+    # .claude above — it keeps its own tree in the home root rather than under
+    # .config, so without this entry every reboot means logging in again.
+    ".codex"
     # VS Code puts *extensions* here, not in ~/.config/Code — that half holds
     # only settings and workspace state. Without this, every reboot is a full
     # extension reinstall.

@@ -30,9 +30,43 @@
     # Obsidian's own config sits in ~/.config/obsidian and rides along with the
     # wholesale .config entry there.
     obsidian
+    # Sticky notes: one floating pad per note. State is a single
+    # ~/.config/sticky/notes.json with timestamped backups beside it, so the
+    # wholesale .config entry in impermanence.nix already covers it. The app menu
+    # entry reads "Notes", not "Sticky".
+    #
+    # Costs +188 MiB rather than its own 683 KiB: it reaches GTK through Mint's
+    # xapp, which drags mate-panel and its dependencies in behind it, 114 MiB of
+    # that libmateweather alone. `xpad` does the same job for +5 MiB and is the
+    # swap to make if that ever matters; nothing else here depends on which of
+    # the two it is, except the window class named in the KWin rule.
+    #
+    # Its own always-on-top checkbox does nothing in this session, because it
+    # calls GTK set_keep_above and Wayland has no protocol for a client asking to
+    # be raised. KWin has to do it instead — modules/home/plasma.nix, matching
+    # window class `sticky.py`, which is what KWin reports rather than `sticky`.
+    sticky
     prismlauncher
 
     claude-code
+    # Second coding agent, same rules. Its instructions are ~/.codex/AGENTS.md,
+    # generated in modules/home from claude/CLAUDE.md so the two agents read one
+    # source rather than two copies that drift apart.
+    #
+    # The walls are modules/nixos/codex.nix, which generates
+    # /etc/codex/requirements.toml from the same guards claude.nix uses — Codex
+    # splits the admin layer in two and only that file is enforced, so nothing with
+    # teeth goes in managed_config.toml beside it, which the user can change
+    # mid-session. Read codex.nix before changing either: the guards are shared but
+    # the way they attach is not, and one of them (shellcheck on write) does not
+    # port at all.
+    #
+    # Bare `codex` opens a TUI and would hang a session with no terminal. It is
+    # still kept out of tools.json's agent_unsafe: that list builds
+    # `Bash(<prefix> *)` denies, and `codex *` would deny the safe `codex exec`
+    # while very likely missing the bare invocation that actually hangs. An
+    # inverted rule is worse than no rule.
+    codex
 
     # VCS — git stays regardless: jj uses it as its backend and gh speaks it.
     git
