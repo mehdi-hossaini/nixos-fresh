@@ -18,13 +18,16 @@ derive it from here rather than guessing.
    (pinned to `false`), `sudo` behind `nh os switch`, and git askpass on an HTTPS remote
    (use SSH remotes). Assume there are others. Work to the last step that needs no
    answer, then hand over.
-4. **Rules are declared; state is not.** `~/.claude/CLAUDE.md` and
-   `check-conventions.sh` are read-only store symlinks — edit `/etc/nixos/claude/` and
-   rebuild. The editor guard, the deny rules and the hooks are *generated* by
-   `modules/nixos/claude.nix` into `/etc/claude-code/managed-settings.json`; there is
-   no JSON file to edit, and the reasoning for each rule sits beside it in the nix.
-   Only `~/.claude/settings.json` is writable in place; it holds state (theme), not
-   rules.
+4. **Rules are declared; state is not.** `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`
+   and `check-conventions.sh` are read-only store symlinks — edit `/etc/nixos/claude/`
+   and rebuild. AGENTS.md is generated from this file, so there is one source and not
+   two. The editor guard, the deny rules and the hooks are *generated* too: the
+   guards live in `modules/nixos/agent-guards.nix` and the deny list in
+   `agent-denies.nix`, shared by both agents, and `claude.nix` / `codex.nix` attach
+   them — into `/etc/claude-code/managed-settings.json` and
+   `/etc/codex/requirements.toml` respectively. There is no JSON or TOML file to
+   edit, and the reasoning for each rule sits beside it in the nix. Only
+   `~/.claude/settings.json` is writable in place; it holds state (theme), not rules.
 5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
    paths outlive a reboot, and `modules/nixos/impermanence.nix` is the list. Use the
    session scratchpad the harness names at startup, never the home root.
@@ -57,8 +60,9 @@ lives, or the gap gets filled by guessing.
 A rule in prose is a handshake; a rule in the generated managed settings is a wall.
 The walls are not listed here on purpose — each one denies with its own explanation
 at the moment it is hit, so restating them would spend context in every session to
-prevent what a hook already prevents. `modules/nixos/claude.nix` is the list, and
-carries the reasoning for each. **A deny from a hook is the guard working: read the
+prevent what a hook already prevents. `modules/nixos/agent-denies.nix` is the list
+and `agent-guards.nix` the guards — both shared by every agent here, and each rule
+carries its reasoning beside it. **A deny from a hook is the guard working: read the
 reason and comply rather than routing around it.**
 
 Two consequences worth carrying in advance, because they change what you plan rather
@@ -107,9 +111,13 @@ ten lines of this one, so a duplicated rule is caught rather than obeyed.
 **Skills split the same way.** A global one is declared by this repo and reaches
 `~/.claude/skills/` as a store symlink, either written into `/etc/nixos/claude/skills/`
 or pulled from a flake input — `modules/home/skills.nix` does the latter for
-`mattpocock/skills`. One that applies to a single project lives in that project's
-`.claude/skills/`, committed there — declared, just not by this one. Nothing under
-`~/.claude/skills/` is hand-written, and the check asserts it.
+`mattpocock/skills` and `ponytail`, and links the second into `~/.codex/skills/` as
+well, because it carries a manifest for both agents. One that applies to a single
+project lives in that project's `.claude/skills/`, committed there — declared, just
+not by this one. Nothing under either skills directory is hand-written, and the check
+asserts it for both — excepting `~/.codex/skills/.system/`, which Codex populates
+with its own built-in skills. Those are state, not rules, and sit on the settings.json
+side of law 4.
 
 **A bundle carrying `.claude-plugin/plugin.json` is linked whole, never flattened.**
 Such a directory loads as `<name>@skills-dir` and its skills are namespaced

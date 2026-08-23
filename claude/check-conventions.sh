@@ -19,7 +19,10 @@ SETTINGS=${SETTINGS:-$HOME/.claude/settings.json}
 MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
 REPO=${REPO:-/etc/nixos}
-SKILLS=${SKILLS:-$HOME/.claude/skills}
+# Both agents' skills directories. ponytail is linked into each under the same rule,
+# and a check covering only the first would assert less than the prose claims — the
+# same way GUARDS did after the guards were factored out.
+read -r -a SKILLS <<<"${SKILLS:-$HOME/.claude/skills $HOME/.codex/skills}"
 # Every file that declares a guard, not just claude.nix. The citations moved when
 # the guards were factored into agent-guards.nix and codex.nix was added, and a
 # check still scanning one file would have gone on passing while silently
@@ -359,24 +362,31 @@ fi
 # and lands here as a store symlink; a project one belongs in that project's own
 # .claude/skills/, committed there. Neither route leaves a hand-written file in this
 # directory, so anything not resolving into the store is state pretending to be a rule.
-if [ ! -d "$SKILLS" ]; then
-  ok "no $SKILLS directory — nothing hand-written to drift"
-else
+# .system is excluded because Codex ships its OWN skills into ~/.codex/skills/.system
+# — imagegen, skill-creator and four more, written there by the agent rather than by
+# anyone here. They are state, not rules, so law 4 puts them on the same side of the
+# line as ~/.claude/settings.json. Claude has no equivalent, which is why this
+# exclusion only started mattering when the check learned about the second directory.
+for skdir in "${SKILLS[@]}"; do
+  if [ ! -d "$skdir" ]; then
+    ok "no $skdir directory — nothing hand-written to drift"
+    continue
+  fi
   handwritten=()
   while read -r f; do
     [[ "$(readlink -f "$f")" == /nix/store/* ]] || handwritten+=("$f")
-  done < <(fd -H -I -t f -t l . "$SKILLS" 2>/dev/null)
-  n=$(fd -H -I -t f -t l . "$SKILLS" 2>/dev/null | wc -l)
+  done < <(fd -H -I -t f -t l . "$skdir" -E .system 2>/dev/null)
+  n=$(fd -H -I -t f -t l . "$skdir" -E .system 2>/dev/null | wc -l)
   if [ ${#handwritten[@]} -ne 0 ]; then
     for f in "${handwritten[@]}"; do
       bad "$f is hand-written — a global skill goes in /etc/nixos/claude/skills/, a project one in that project's repo"
     done
   elif [ "$n" -eq 0 ]; then
-    ok "$SKILLS is empty"
+    ok "$skdir is empty"
   else
-    ok "all $n files under $SKILLS resolve into the store"
+    ok "all $n files under $skdir resolve into the store"
   fi
-fi
+done
 
 # ── a project CLAUDE.md narrows; it must not restate this one ────────────────
 # A copy cannot be corrected from here, and a stale copy outranks nothing while

@@ -105,11 +105,14 @@ let
       instead, and the reason says which it is. If it says the guard could not
       decide, that is a false positive from the collapse, not a rule you broke.
 
-      **And one wall is missing.** Writing a `*.sh` is NOT shellchecked for you:
-      that gate keys on a field Claude's edit tool sets and `apply_patch` does not.
-      Run `shellcheck -x` yourself before you consider a shell script finished. The
-      commit gate, the TUI denies, the law-1 command-shape rules and the spill rule
-      all apply normally.
+      **And two are thinner than Claude's.** Writing a `*.sh` is NOT shellchecked
+      for you: that gate keys on a field Claude's edit tool sets and `apply_patch`
+      does not, so run `shellcheck -x` yourself before calling a shell script
+      finished. And the file rule reads `apply_patch`'s own text — so editing a
+      generated file through the SHELL (`sed -i`, `cat >`, a heredoc) is not walled
+      off for you at all. Claude has an auto-mode classifier covering that route;
+      you do not. Everything else — the deny list, the TUI rules, the commit gate,
+      the law-1 command shapes and the spill rule — applies in full.
 
       Follow the rest because they are right, not because something is watching.
 

@@ -79,6 +79,63 @@ let
   # in the header. Matching is on a padded, separator-flattened probe so a verb is
   # found the same way whether it opens the command or follows a pipe, which is
   # the trick spillPaginationGuard already uses.
+
+  denies = import ./agent-denies.nix { inherit lib agentUnsafe; };
+
+  # Claude's permissions.deny, as a hook — because Codex has none. A `Bash(<glob>)`
+  # pattern and a shell `case` glob mean the same thing, so the translation is
+  # mechanical: quote the literal runs and leave the `*`s outside, since a case
+  # pattern with a bare space in it is a syntax error rather than a wide match.
+  toCasePattern =
+    p: lib.concatStringsSep "*" (map (s: if s == "" then "" else ''"${s}"'') (lib.splitString "*" p));
+
+  denyGuard = pkgs.writeShellScript "codex-guard-denies" ''
+    ${guards.guardPreamble}
+    deny() {
+      ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+      exit 0
+    }
+    # Segmented rather than matched whole, so `jj log && jj split` is caught on its
+    # second half instead of sliding past. Claude Code parses compound commands
+    # itself before applying permissions.deny; this is the same job done where the
+    # payload lands.
+    while IFS= read -r seg; do
+      seg="''${seg#"''${seg%%[! ]*}"}"
+      [ -n "$seg" ] || continue
+      case "$seg" in
+      ${lib.concatMapStringsSep "\n      " (
+        g:
+        "${lib.concatMapStringsSep " | " toCasePattern g.patterns}) deny ${lib.escapeShellArg g.reason} ;;"
+      ) denies.bashGroups}
+      esac
+    done <<SEGMENTS
+    $(printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n')
+    SEGMENTS
+    exit 0
+  '';
+
+  # The file rule. Claude states it once as `Edit(path)` and that governs every
+  # file tool it has; Codex has no file permission at all, so the same rule has to
+  # read apply_patch's own command text. Broader than the path glob deliberately —
+  # see agent-denies.nix.
+  applyPatchGuard = pkgs.writeShellScript "codex-guard-apply-patch" ''
+    set -u
+    ${escalateFn}
+    input=$(cat)
+    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty') ||
+      escalate "guard could not read the patch out of the hook payload."
+    case "$cmd" in
+    ${denies.fileRule.codexMatch}) ;;
+    *) exit 0 ;;
+    esac
+    ${jq} -n --arg r ${lib.escapeShellArg denies.fileRule.reason} '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $r
+      }
+    }'
+  '';
   tuiGuard = pkgs.writeShellScript "codex-guard-tui" ''
     ${guards.guardPreamble}
     probe=$(printf ' %s ' "$cmd" | tr ';|&()\n\t' '       ')
@@ -120,11 +177,21 @@ let
         matcher = "^Bash$";
         hooks = [
           (mkHook "${tuiGuard}" "Checking for an interactive TUI" 10)
+          (mkHook "${denyGuard}" "Checking the deny list" 10)
           (mkHook "${guards.colocatedCommitGuard}" "Checking for a colocated repo" 10)
           (mkHook "${guards.publishGate}" "Gating on gitleaks + nix flake check" 180)
           (mkHook "${guards.untrackedNixGuard}" "Checking for untracked nix files" 10)
           (mkHook "${guards.commandShapeGuard}" "Checking the command shape" 10)
           (mkHook "${guards.spillPaginationGuard}" "Checking for a paginated spill read" 10)
+        ];
+      }
+      {
+        # apply_patch is what Codex reports for a file edit; the docs allow Edit
+        # and Write as matcher aliases, so all three are named rather than betting
+        # on which one a future version sends.
+        matcher = "^(apply_patch|Edit|Write)$";
+        hooks = [
+          (mkHook "${applyPatchGuard}" "Checking the file rule" 10)
         ];
       }
     ];
