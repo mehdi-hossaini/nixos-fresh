@@ -24,6 +24,12 @@
     # without it you get one OS window per task.
     zellij
     vscode
+    # Notes. The vault is ordinary markdown on disk, so where it lives decides
+    # whether it survives a reboot: put it under ~/Documents or ~/Projects,
+    # which impermanence.nix persists. A vault in the home root does not.
+    # Obsidian's own config sits in ~/.config/obsidian and rides along with the
+    # wholesale .config entry there.
+    obsidian
     prismlauncher
 
     claude-code

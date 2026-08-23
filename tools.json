@@ -306,6 +306,13 @@
       "purpose": "Browser. GUI. Binary is `brave-origin`, not `brave`."
     },
     {
+      "name": "obsidian",
+      "package": "obsidian",
+      "category": "editor",
+      "purpose": "Markdown notes over a local folder of plain files. GUI, so an agent shell cannot drive it — read and write the vault's .md files directly instead.",
+      "notes": "Unfree (Obsidian EULA); allowUnfree is already set in modules/nixos/nix.nix. The vault is ordinary markdown on disk and is NOT persisted by virtue of being a vault: keep it under ~/Documents or ~/Projects, which impermanence.nix lists. ~/.config/obsidian is covered by the wholesale .config entry."
+    },
+    {
       "name": "prismlauncher",
       "package": "prismlauncher",
       "category": "games",
