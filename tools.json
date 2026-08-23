@@ -328,6 +328,14 @@
       "notes": "Check it with `systemctl --user status \"*aw*\"`. The home-manager module's ExecStart is `aw-server`, which this package provides and the `activitywatch` bundle does not expose as mainProgram."
     },
     {
+      "name": "aw-watcher-vscode",
+      "package": "aw-watcher-vscode",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "VS Code extension reporting the active file, project and language to aw-server. Fills the web UI's Editor tab, which is otherwise blank.",
+      "notes": "Not a PATH binary and not a systemd unit — it is a marketplace extension, built by vscode-utils.extensionFromVscodeMarketplace in modules/home/default.nix and symlinked as ONE entry into ~/.vscode/extensions. Deliberately not vscode-with-extensions: that repoints --extensions-dir at a read-only store path, which unloads every extension not declared in nix. The other five here (claude-code, foam, nix-ide, elixir-ls, excalidraw-editor) stay hand-installed and keep auto-updating. Extension is v0.5.0 (2021-02-05), engine `vscode ^1.23.0` against 1.133.0 — stale but in range."
+    },
+    {
       "name": "aw-watcher-lid",
       "package": "aw-watcher-lid",
       "commands": [],

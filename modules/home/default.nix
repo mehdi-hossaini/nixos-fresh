@@ -17,6 +17,18 @@ let
 
   # One string, four styles. Change this to reface the terminal.
   terminalFont = "JetBrainsMono Nerd Font Mono";
+
+  # ActivityWatch's editor watcher. Built from the marketplace rather than
+  # nixpkgs, which carries no ActivityWatch extension. v0.5.0 was last published
+  # 2021-02-05 and declares engine `vscode ^1.23.0`; the vscode here is 1.133.0,
+  # so it is stale but in range — checked rather than assumed, because an
+  # out-of-range extension installs and then silently never activates.
+  awWatcherVscode = pkgs.vscode-utils.extensionFromVscodeMarketplace {
+    name = "aw-watcher-vscode";
+    publisher = "activitywatch";
+    version = "0.5.0";
+    sha256 = "sha256-OrdIhgNXpEbLXYVJAx/jpt2c6Qa5jf8FNxqrbu5FfFs=";
+  };
 in
 {
   imports = [
@@ -484,6 +496,24 @@ in
   # here, because Claude Code must be able to write that file. It is declared as
   # managed settings instead; see modules/nixos/claude.nix.
   home.file = {
+    # One extension declared, the rest deliberately not. The obvious route,
+    # vscode-with-extensions, does not add extensions — it repoints VS Code's
+    # --extensions-dir at a read-only store path (with-extensions.nix:75), so
+    # every extension NOT declared in nix stops loading. That would have taken
+    # out claude-code, foam, nix-ide, elixir-ls and excalidraw-editor, and frozen
+    # claude-code's version behind a hash bump per update.
+    #
+    # Symlinking a single extension into the directory instead leaves it writable
+    # and leaves those five alone: they stay hand-installed, they keep
+    # auto-updating, and impermanence.nix keeps persisting them. Only this one is
+    # a store symlink, which is the whole of what was asked for.
+    #
+    # The directory name follows VS Code's own publisher.name-version convention.
+    # VS Code reads the real version from package.json inside, so the suffix is
+    # only there to keep this legible beside the hand-installed entries.
+    ".vscode/extensions/activitywatch.aw-watcher-vscode-0.5.0".source =
+      "${awWatcherVscode}/share/vscode/extensions/activitywatch.aw-watcher-vscode";
+
     ".claude/CLAUDE.md".source = ../../claude/CLAUDE.md;
     ".claude/check-conventions.sh" = {
       source = ../../claude/check-conventions.sh;
