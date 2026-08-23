@@ -348,6 +348,73 @@ let
     }'
   '';
 
+  # Context economy — the one rule here whose cost is paid in a resource that
+  # cannot be topped up mid-session. When a Bash result is oversized the harness
+  # writes it to <session>/tool-results/<id>.txt and shows only a head. That is a
+  # saving already banked. Measured 2026-08-23 over session 38561f2e: 232 KB was
+  # spilled that way, and seven later calls paginated 54 KB of it straight back in
+  # with `sed -n '1,400p'`, spending exactly what the spill had saved. Bash was
+  # 92% of that session's tool output, and 5% of its calls carried 38% of it.
+  #
+  # This is validation, not geometry. Output size is unknowable before a command
+  # runs, so the wasteful state cannot be made unrepresentable the way an illegal
+  # state can — only refused once it has been named. Saying so here is cheaper
+  # than someone later mistaking this guard for a design.
+  #
+  # It is a separate guard rather than a fourth arm of commandShapeGuard because
+  # that one answers for law 1 and for data loss, and this answers for context.
+  # Keeping them apart is also what makes "the other guards are unaffected" true
+  # by construction instead of by test — see claude/replay-guards.sh.
+  #
+  # The deny names BOTH exits on purpose. Naming only `grep` looks complete and is
+  # not: when the whole file genuinely is the answer, grep cannot deliver it and
+  # the wall becomes a trap. Re-running the original command in smaller batches is
+  # the second exit, and it is the one that gets forgotten. A guard that denies its
+  # own remedy is broken, which is why replay-guards.sh asserts that every route
+  # this message names is a route this guard allows.
+  spillPaginationGuard = pkgs.writeShellScript "claude-guard-spill-pagination" ''
+    set -u
+    ${escalateFn}
+    input=$(cat)
+    # This runs on every Bash call, so the literal test comes before the jq fork,
+    # for the same reason commandShapeGuard tests first and parses second. A
+    # payload without this substring cannot be about a spill file, so allowing it
+    # is an answer rather than a guess.
+    case $input in
+    *"tool-results/"*) ;;
+    *) exit 0 ;;
+    esac
+    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty') ||
+      escalate "guard could not parse a hook payload that named a spill file. Asking rather than assuming."
+    [ -n "$cmd" ] ||
+      escalate "the hook payload carried no command, so this guard cannot inspect its shape. Asking rather than assuming."
+    deny() {
+      ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+      exit 0
+    }
+
+    # Pad and flatten separators so a verb is found the same way whether it opens
+    # the command, follows a semicolon, or sits after a pipe. Without this, `cat f`
+    # at position 0 has no leading space and slips past a " cat " test.
+    probe=$(printf ' %s ' "$cmd" | tr ';|&()\n\t' '       ')
+
+    # Order is the totality argument. Queries are allowed first, so `grep … | head`
+    # is judged as the query it is rather than the pagination it contains. The
+    # bulk-import verbs are refused second. The default arm is a decision, not a
+    # fallthrough: `rm`, `ls`, `stat` on a spill file have nothing to do with
+    # context economy, and this guard has no opinion about them.
+    #
+    # `sed -n '/anchor/,/anchor/p'` is deliberately on the deny side. It reads as a
+    # query but routinely extracts most of the file, and it is the exact shape the
+    # 54 KB was spent on. `grep -A/-B` covers the honest version of that intent.
+    case $probe in
+    *grep*|*" rg "*|*" jq "*|*" wc "*) exit 0 ;;
+    *" sed "*|*" cat "*|*" head "*|*" tail "*|*" awk "*)
+      deny "the harness spilled this result to a file to keep it out of context; paginating it back in spends exactly what the spill saved. Measured on this machine: 232 KB spilled, 54 KB pulled straight back. Two ways forward, and the second is the one that gets forgotten. (1) grep/rg the file, if you need a fact out of it. (2) If you genuinely need all of it, re-run the ORIGINAL command in smaller batches so each result lands in context directly. A spill means the read was sized wrong, not that the content is off limits." ;;
+    *) exit 0 ;;
+    esac
+  '';
+
   mkHook =
     {
       if_,
@@ -412,6 +479,12 @@ let
               command = "${commandShapeGuard}";
               timeout = 10;
               statusMessage = "Checking the command shape";
+            }
+            {
+              type = "command";
+              command = "${spillPaginationGuard}";
+              timeout = 10;
+              statusMessage = "Checking for a paginated spill read";
             }
           ];
         }
