@@ -615,11 +615,25 @@ let
         # nixos-generate-config, and tools.json has said "never hand-edited" all
         # along — but prose does not stop tooling: a `deadnix --edit` pass
         # stripped an unused argument from it twice within ten minutes
-        # (2026-08). Note what this does and does not do. It blocks Claude's
-        # file tools; it does not block `sed -i` from a shell, and it does not
-        # block an editor extension. default.nix and disko.nix beside it are
-        # hand-written and must stay editable, hence the exact filename rather
-        # than the directory.
+        # (2026-08). default.nix and disko.nix beside it are hand-written and
+        # must stay editable, hence the exact filename rather than the
+        # directory.
+        #
+        # One pattern is the whole wall. `Edit(path)` is not the Edit tool's
+        # rule — it is THE file rule. Verified 2026-08-24 against claude-code
+        # 2.1.234 and the permissions docs: file permissions are checked against
+        # `Edit(path)` and `Read(path)` ONLY, and an Edit pattern governs Edit,
+        # Write, MultiEdit and NotebookEdit together. So do not add `Write(...)`
+        # beside this to close a gap — there is none, and such a rule is
+        # accepted, never consulted, and warned about at startup: a lock whose
+        # only effect is to look like a second one.
+        #
+        # What it still does not reach is an editor extension writing the file
+        # itself. The shell route (`sed -i`, `cat >`, a heredoc) is not walled
+        # off either, but neither is it open: sessions start in auto mode, and
+        # that classifier is instructed to block a Bash command accomplishing
+        # what an Edit deny rule covers. Weaker than a wall is not the same as
+        # absent.
         "Edit(//etc/nixos/hosts/*/hardware-configuration.nix)"
       ]
       # Everything the inventory marks interactive. Four rules today; the list
