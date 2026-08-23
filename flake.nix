@@ -67,6 +67,15 @@
       flake = false;
     };
 
+    # github.com/DietrichGebert/ponytail (MIT). Same `flake = false` reasoning as
+    # the input above: a content repo, re-locked by `nix flake update`, with no
+    # hand-written rev to go stale. modules/home/skills.nix links it for both
+    # agents and explains the one thing that cannot be linked as-is.
+    ponytail = {
+      url = "github:DietrichGebert/ponytail";
+      flake = false;
+    };
+
     prismlauncher-cracked = {
       url = "github:Diegiwg/PrismLauncher-Cracked";
       inputs.nixpkgs.follows = "nixpkgs";
