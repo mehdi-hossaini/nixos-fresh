@@ -306,6 +306,29 @@
       "purpose": "Browser. GUI. Binary is `brave-origin`, not `brave`."
     },
     {
+      "name": "espanso",
+      "package": "espanso",
+      "category": "desktop",
+      "purpose": "Text expander. Runs as the `espanso` systemd user unit; triggers are declared in modules/home/default.nix and reach ~/.config/espanso as read-only store symlinks, so a new snippet is an edit plus a switch.",
+      "notes": "Wayland build (espanso-wayland via services.espanso.x11Support = false) — the X11 build on a Wayland session installs and silently expands nothing, which upstream's own Linux docs warn about. Needs hardware.uinput.enable (hardware.nix) AND the user in the uinput group (users.nix); both are required and both fail silently. Group membership is read at login, so a re-login is needed, not just a switch. Upstream calls Wayland support experimental."
+    },
+    {
+      "name": "aw-server-rust",
+      "package": "aw-server-rust",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "ActivityWatch server. Run as the `activitywatch` systemd user unit from modules/home/default.nix, not from PATH — it binds localhost:5600 and serves the web UI there. Data in ~/.local/share/activitywatch.",
+      "notes": "Check it with `systemctl --user status \"*aw*\"`. The home-manager module's ExecStart is `aw-server`, which this package provides and the `activitywatch` bundle does not expose as mainProgram."
+    },
+    {
+      "name": "awatcher",
+      "package": "awatcher",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "The active-window and idle watcher feeding aw-server. Replaces both stock watchers, which cannot see a Wayland session.",
+      "notes": "Deliberate substitution, not a preference. aw-watcher-window is X11-only, aw-watcher-afk drives pynput (also X11), and aw-watcher-window-wayland needs wlr-foreign-toplevel-management, which KWin does not implement — its README lists KDE as unsupported. All three would run and silently record nothing. awatcher uses a builtin KWin script plus the kde-idle protocol instead. Its config is ~/.config/awatcher, not the activitywatch/<name>/ path the home-manager module generates."
+    },
+    {
       "name": "obsidian",
       "package": "obsidian",
       "category": "editor",

@@ -1,4 +1,5 @@
 {
+  pkgs,
   user,
   fullName,
   email,
@@ -352,6 +353,81 @@ in
     # and does not survive a reboot. Verified against claude-code 2.1.228:
     # with this set, the json is created inside the directory, not beside it.
     CLAUDE_CONFIG_DIR = "/home/${user}/.claude";
+  };
+
+  # Automated time tracker. Everything stays on this machine: aw-server binds
+  # localhost:5600 and serves its own web UI there; nothing is sent anywhere.
+  #
+  # The watcher choice is forced by the session, and getting it wrong is silent.
+  # Plasma 6 runs Wayland here, and ActivityWatch's own two watchers are both
+  # blind to that: aw-watcher-window is X11-only (its Linux branch is `from .
+  # import xlib`, there is no Wayland path at all) and aw-watcher-afk drives
+  # pynput, which is the same story. aw-watcher-window-wayland exists for the
+  # gap but needs wlr-foreign-toplevel-management, and its own README lists
+  # KDE/KWin as unsupported. All three would start cleanly, connect to Xwayland,
+  # and record nothing — the worst available failure, because the server and UI
+  # still look healthy while the database stays empty.
+  #
+  # awatcher replaces both stock watchers with the one combination that can see
+  # this session: a builtin KWin script for the active window, and the kde-idle
+  # protocol for AFK. Its own config lives in ~/.config/awatcher rather than the
+  # activitywatch/<name>/ path this module generates, so `settings` is left
+  # unset on purpose — setting it would write a file nothing reads.
+  #
+  # Neither package goes on PATH; the units reference the store paths directly,
+  # which is why both inventory entries carry "commands": []. Data lands in
+  # ~/.local/share/activitywatch, persisted by the wholesale .local/share entry
+  # in modules/nixos/impermanence.nix.
+  services.activitywatch = {
+    enable = true;
+    package = pkgs.aw-server-rust;
+    watchers.awatcher = {
+      package = pkgs.awatcher;
+      executable = "awatcher";
+    };
+  };
+
+  # Text expander. The variant must match the session: espanso's own Linux docs
+  # say an X11 build on Wayland "may install but silently fail to work", and
+  # `loginctl show-session` reports Type=wayland Desktop=KDE here. So x11Support
+  # is off — leaving both on makes the module wrap the two builds in a
+  # $WAYLAND_DISPLAY dispatcher and carry an X11 closure this session never runs.
+  #
+  # Upstream calls Wayland support experimental, and it is why hardware.uinput is
+  # enabled and the user is in the uinput group (modules/nixos/hardware.nix and
+  # users.nix): with no compositor-level way to inject keystrokes, espanso types
+  # through /dev/uinput. Missing either half fails silently, same as above.
+  #
+  # configs and matches become read-only store symlinks under ~/.config/espanso,
+  # so triggers are declared here rather than edited in place — law 4. Adding one
+  # is an edit here plus a switch, not a file written next to the running service.
+  services.espanso = {
+    enable = true;
+    x11Support = false;
+    matches = {
+      base.matches = [
+        {
+          trigger = ":date";
+          replace = "{{mydate}}";
+        }
+        {
+          trigger = ":time";
+          replace = "{{mytime}}";
+        }
+      ];
+      global_vars.global_vars = [
+        {
+          name = "mydate";
+          type = "date";
+          params.format = "%Y-%m-%d";
+        }
+        {
+          name = "mytime";
+          type = "date";
+          params.format = "%H:%M";
+        }
+      ];
+    };
   };
 
   # Claude Code's instructions and the check that keeps them honest are rules, so
