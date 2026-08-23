@@ -45,11 +45,25 @@ let
     }
     {
       # Erlang is the other gap, and nine .erl files ride along with the Elixir
-      # work here. Engine ^1.52.0.
+      # work here. Engine ^1.52.0. Note it covers Erlang only — .erl .hrl .xrl
+      # .yrl .es .escript — and nothing of Elixir or Nix, which share its
+      # runtime and its reputation for being the same thing.
       publisher = "pgourlain";
       name = "erlang";
       version = "1.1.4";
       sha256 = "sha256-sRS+kE2H2oya2gd/GIVevdovmvyKxKUAQWKnWrgqoPo=";
+    }
+    {
+      # The grammar for the language this repo is written in, and the only
+      # installed extension that claims .nix — vscode has no built-in one. It was
+      # hand-installed, which made it the first thing a fresh machine would lack
+      # while being the thing most needed to fix that machine. Pairs with nixd
+      # from packages.nix: this is the editor client, that is the server.
+      # Engine >=1.105.0.
+      publisher = "jnoortheen";
+      name = "nix-ide";
+      version = "0.5.13";
+      sha256 = "sha256-0pMMnYFX+Ghs42Tvfcv9QqwhrEhCjIa7+6xJ51Fa0Dk=";
     }
   ];
 
