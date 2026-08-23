@@ -328,6 +328,14 @@
       "notes": "Check it with `systemctl --user status \"*aw*\"`. The home-manager module's ExecStart is `aw-server`, which this package provides and the `activitywatch` bundle does not expose as mainProgram."
     },
     {
+      "name": "aw-watcher-media-player",
+      "package": "aw-watcher-media-player",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "Reports currently playing media to aw-server. Runs as the `activitywatch-watcher-media-player` systemd user unit, not from PATH.",
+      "notes": "Not in nixpkgs; built by overlays/aw-watcher-media-player.nix. Reads MPRIS over the session bus, so it works on Plasma Wayland where most of upstream's watcher list does not. Upstream's Cargo.toml says 1.1.3 at tag v1.1.4 and declares MPL-2.0 while LICENSE is the Unlicense — the overlay follows the tag and the LICENSE file, and says why."
+    },
+    {
       "name": "awatcher",
       "package": "awatcher",
       "commands": [],

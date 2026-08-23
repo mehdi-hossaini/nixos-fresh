@@ -4,6 +4,7 @@
     (import ../../overlays/prismlauncher-cracked.nix {
       prismlauncher-cracked = inputs.prismlauncher-cracked;
     })
+    (import ../../overlays/aw-watcher-media-player.nix)
   ];
   nixpkgs.config.allowUnfree = true;
 

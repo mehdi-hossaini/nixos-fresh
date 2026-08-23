@@ -385,6 +385,16 @@ in
       package = pkgs.awatcher;
       executable = "awatcher";
     };
+    # The one watcher from upstream's list that needed no compromise here: it
+    # reads MPRIS over the session bus, which Plasma and Brave both speak, so
+    # unlike the stock ActivityWatch watchers it wants neither X11 nor a wayland
+    # toplevel protocol. Built by overlays/aw-watcher-media-player.nix — nixpkgs
+    # does not carry it. Defaults to localhost:5600, which is where the server
+    # above listens, so it needs no arguments.
+    watchers.media-player = {
+      package = pkgs.aw-watcher-media-player;
+      executable = "aw-watcher-media-player";
+    };
   };
 
   # Text expander. The variant must match the session: espanso's own Linux docs
