@@ -21,11 +21,6 @@ in
       "video"
       "audio"
       "input"
-      # Write access to /dev/uinput, which is how espanso types under Wayland.
-      # The group only exists because hardware.uinput.enable is set in
-      # hardware.nix — the two are one change split across two files. Group
-      # membership is read at login, so this needs a re-login, not just a switch.
-      "uinput"
     ];
     hashedPasswordFile = passwordHashFile;
     shell = pkgs.fish;

@@ -306,20 +306,6 @@
       "purpose": "Browser. GUI. Binary is `brave-origin`, not `brave`."
     },
     {
-      "name": "kdotool",
-      "package": "kdotool",
-      "category": "desktop",
-      "purpose": "Ask KWin which window is focused, and its class and title. xdotool's counterpart for a KDE Wayland session, driven through KWin's scripting interface rather than any wayland protocol.",
-      "notes": "Present for espanso: without it on PATH, espanso logs `kdotool missing or not available for the current wayland DE` and per-app configs (filter_class, filter_title) match nothing. Useful by hand too — `kdotool getactivewindow` then `kdotool getwindowclassname <id>`."
-    },
-    {
-      "name": "espanso",
-      "package": "espanso",
-      "category": "desktop",
-      "purpose": "Text expander. Runs as the `espanso` systemd user unit; triggers are declared in modules/home/default.nix and reach ~/.config/espanso as read-only store symlinks, so a new snippet is an edit plus a switch.",
-      "notes": "Wayland build (espanso-wayland via services.espanso.x11Support = false) — the X11 build on a Wayland session installs and silently expands nothing, which upstream's own Linux docs warn about. Needs hardware.uinput.enable (hardware.nix) AND the user in the uinput group (users.nix); both are required and both fail silently. Group membership is read at login, so a re-login is needed, not just a switch. Upstream calls Wayland support experimental."
-    },
-    {
       "name": "aw-server-rust",
       "package": "aw-server-rust",
       "commands": [],

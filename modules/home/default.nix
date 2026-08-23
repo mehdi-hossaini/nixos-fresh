@@ -36,7 +36,7 @@ let
     }
     {
       # vscode ships ~45 built-in grammars and TOML is not one of them, while
-      # this machine has ten .toml files (Cargo, devenv, treefmt, espanso).
+      # this machine has ten .toml files (Cargo, devenv, treefmt).
       # Engine ^1.90.0.
       publisher = "tamasfe";
       name = "even-better-toml";
@@ -504,61 +504,6 @@ in
     match-app-id = "code"
     replace-app-id = "Code"
   '';
-
-  # Text expander. The variant must match the session: espanso's own Linux docs
-  # say an X11 build on Wayland "may install but silently fail to work", and
-  # `loginctl show-session` reports Type=wayland Desktop=KDE here. So x11Support
-  # is off — leaving both on makes the module wrap the two builds in a
-  # $WAYLAND_DISPLAY dispatcher and carry an X11 closure this session never runs.
-  #
-  # Upstream calls Wayland support experimental, and it is why hardware.uinput is
-  # enabled and the user is in the uinput group (modules/nixos/hardware.nix and
-  # users.nix): with no compositor-level way to inject keystrokes, espanso types
-  # through /dev/uinput. Missing either half fails silently, same as above.
-  #
-  # configs and matches become read-only store symlinks under ~/.config/espanso,
-  # so triggers are declared here rather than edited in place — law 4. Adding one
-  # is an edit here plus a switch, not a file written next to the running service.
-  services.espanso = {
-    enable = true;
-    x11Support = false;
-    configs.default = {
-      # `espanso log` warned "unable to determine keyboard layout automatically,
-      # please explicitly specify it in the configuration" — a Wayland session
-      # exposes no way to ask, and the evdev backend needs the layout to turn
-      # keycodes into characters. Wrong or absent, expansions come out as the
-      # wrong letters rather than not at all, which is harder to notice.
-      #
-      # desktop.nix sets xkb to "se,ir"; espanso takes one RMLVO layout, so it
-      # gets the primary. Text typed while the second (ir) group is active is
-      # outside what this can fix — espanso has no notion of a group switch.
-      keyboard_layout.layout = "se";
-    };
-    matches = {
-      base.matches = [
-        {
-          trigger = ":date";
-          replace = "{{mydate}}";
-        }
-        {
-          trigger = ":time";
-          replace = "{{mytime}}";
-        }
-      ];
-      global_vars.global_vars = [
-        {
-          name = "mydate";
-          type = "date";
-          params.format = "%Y-%m-%d";
-        }
-        {
-          name = "mytime";
-          type = "date";
-          params.format = "%H:%M";
-        }
-      ];
-    };
-  };
 
   # Claude Code's instructions and the check that keeps them honest are rules, so
   # they are declared here and reach ~/.claude as store symlinks — a fresh machine
