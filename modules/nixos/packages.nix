@@ -30,6 +30,16 @@
     # Obsidian's own config sits in ~/.config/obsidian and rides along with the
     # wholesale .config entry there.
     obsidian
+    # espanso's eyes on KDE Wayland. Without it the log repeats "kdotool missing
+    # or not available for the current wayland DE" and then "no appropriate
+    # WaylandAppInfoProvider found", which means per-app configs — filter_class,
+    # filter_title — silently match nothing, because espanso cannot tell which
+    # window is focused. KWin implements no toplevel protocol, so kdotool asks
+    # KWin's own scripting interface instead. Verified against this session: it
+    # returns brave-origin and the tab title. Here rather than in home.packages
+    # so it lands on the systemd user unit's PATH, which carries
+    # /run/current-system/sw/bin.
+    kdotool
     prismlauncher
 
     claude-code

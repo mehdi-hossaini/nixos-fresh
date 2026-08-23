@@ -306,6 +306,13 @@
       "purpose": "Browser. GUI. Binary is `brave-origin`, not `brave`."
     },
     {
+      "name": "kdotool",
+      "package": "kdotool",
+      "category": "desktop",
+      "purpose": "Ask KWin which window is focused, and its class and title. xdotool's counterpart for a KDE Wayland session, driven through KWin's scripting interface rather than any wayland protocol.",
+      "notes": "Present for espanso: without it on PATH, espanso logs `kdotool missing or not available for the current wayland DE` and per-app configs (filter_class, filter_title) match nothing. Useful by hand too — `kdotool getactivewindow` then `kdotool getwindowclassname <id>`."
+    },
+    {
       "name": "espanso",
       "package": "espanso",
       "category": "desktop",

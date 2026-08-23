@@ -404,6 +404,18 @@ in
   services.espanso = {
     enable = true;
     x11Support = false;
+    configs.default = {
+      # `espanso log` warned "unable to determine keyboard layout automatically,
+      # please explicitly specify it in the configuration" — a Wayland session
+      # exposes no way to ask, and the evdev backend needs the layout to turn
+      # keycodes into characters. Wrong or absent, expansions come out as the
+      # wrong letters rather than not at all, which is harder to notice.
+      #
+      # desktop.nix sets xkb to "se,ir"; espanso takes one RMLVO layout, so it
+      # gets the primary. Text typed while the second (ir) group is active is
+      # outside what this can fix — espanso has no notion of a group switch.
+      keyboard_layout.layout = "se";
+    };
     matches = {
       base.matches = [
         {
