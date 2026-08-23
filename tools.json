@@ -328,6 +328,30 @@
       "notes": "Check it with `systemctl --user status \"*aw*\"`. The home-manager module's ExecStart is `aw-server`, which this package provides and the `activitywatch` bundle does not expose as mainProgram."
     },
     {
+      "name": "aw-watcher-lid",
+      "package": "aw-watcher-lid",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "Reports laptop lid, suspend and resume to aw-server. Runs as the `activitywatch-watcher-lid` systemd user unit, not from PATH.",
+      "notes": "Not in nixpkgs; built by overlays/activitywatch-watchers.nix. Applicable only because this host is a laptop (LID0 in /proc/acpi/button/lid, DMI chassis type 10). Upstream builds through poetry-dynamic-versioning, which reads the version from git history — a fetched tarball has none, so the derivation sets POETRY_DYNAMIC_VERSIONING_BYPASS to the tag."
+    },
+    {
+      "name": "aw-watcher-utilization",
+      "package": "aw-watcher-utilization",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "Reports CPU, RAM, GPU and disk usage to aw-server. Runs as the `activitywatch-watcher-utilization` systemd user unit, not from PATH.",
+      "notes": "Not in nixpkgs; built by overlays/activitywatch-watchers.nix. Needed three patches: the pre-poetry-core `poetry.masonry.api` backend, a `python <3.13` ceiling against nixpkgs' 3.14, and a psutil <6 cap against nixpkgs' 7.2.2 — all staleness rather than real incompatibility, and each relaxed by name."
+    },
+    {
+      "name": "aw-watcher-network-rs",
+      "package": "aw-watcher-network-rs",
+      "commands": [],
+      "category": "tracking",
+      "purpose": "Reports network connectivity and wifi SSIDs to aw-server, into its own two buckets. Runs as the `activitywatch-watcher-network` systemd user unit, not from PATH.",
+      "notes": "Not in nixpkgs; built by overlays/activitywatch-watchers.nix. Chosen over sameersismail/aw-watcher-netstatus, which has had no commit since January 2023. Its two git dependencies both come from aw-server-rust at one rev, so they take the same outputHash under different keys."
+    },
+    {
       "name": "aw-watcher-media-player",
       "package": "aw-watcher-media-player",
       "commands": [],

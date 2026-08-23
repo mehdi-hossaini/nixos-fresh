@@ -395,6 +395,27 @@ in
       package = pkgs.aw-watcher-media-player;
       executable = "aw-watcher-media-player";
     };
+    # Applicable because this is a laptop: /proc/acpi/button/lid carries LID0 and
+    # the DMI chassis type is 10. On a desktop this watcher would record nothing.
+    watchers.lid = {
+      package = pkgs.aw-watcher-lid;
+      executable = "aw-watcher-lid";
+    };
+    # CPU, RAM, GPU and disk. Reads /proc through psutil, so nothing about it cares which
+    # display server is running — the reason it survives the filter that removed
+    # most of upstream's list.
+    watchers.utilization = {
+      package = pkgs.aw-watcher-utilization;
+      executable = "aw-watcher-utilization";
+    };
+    # Connectivity plus wifi SSID, into two buckets of its own. The Rust one, not
+    # sameersismail/aw-watcher-netstatus: that repo has had no commit since
+    # January 2023 and pins an aw-client old enough to be a packaging project of
+    # its own, for the same signal.
+    watchers.network = {
+      package = pkgs.aw-watcher-network-rs;
+      executable = "aw-watcher-network-rs";
+    };
   };
 
   # Text expander. The variant must match the session: espanso's own Linux docs
