@@ -18,17 +18,50 @@ let
   # One string, four styles. Change this to reface the terminal.
   terminalFont = "JetBrainsMono Nerd Font Mono";
 
-  # ActivityWatch's editor watcher. Built from the marketplace rather than
-  # nixpkgs, which carries no ActivityWatch extension. v0.5.0 was last published
-  # 2021-02-05 and declares engine `vscode ^1.23.0`; the vscode here is 1.133.0,
-  # so it is stale but in range — checked rather than assumed, because an
-  # out-of-range extension installs and then silently never activates.
-  awWatcherVscode = pkgs.vscode-utils.extensionFromVscodeMarketplace {
-    name = "aw-watcher-vscode";
-    publisher = "activitywatch";
-    version = "0.5.0";
-    sha256 = "sha256-OrdIhgNXpEbLXYVJAx/jpt2c6Qa5jf8FNxqrbu5FfFs=";
-  };
+  # VS Code extensions declared here rather than hand-installed. Only these; the
+  # five already in ~/.vscode/extensions stay hand-installed on purpose — see the
+  # home.file comment below for why that split exists and how it is kept.
+  #
+  # Every engine range was checked against the vscode here (1.133.0) before being
+  # pinned. An out-of-range extension installs and then silently never activates,
+  # which looks identical to the feature simply not working.
+  vscodeExtensions = map pkgs.vscode-utils.extensionFromVscodeMarketplace [
+    {
+      # Fills the web UI's Editor tab. v0.5.0, last published 2021-02-05,
+      # engine ^1.23.0 — stale, in range.
+      publisher = "activitywatch";
+      name = "aw-watcher-vscode";
+      version = "0.5.0";
+      sha256 = "sha256-OrdIhgNXpEbLXYVJAx/jpt2c6Qa5jf8FNxqrbu5FfFs=";
+    }
+    {
+      # vscode ships ~45 built-in grammars and TOML is not one of them, while
+      # this machine has ten .toml files (Cargo, devenv, treefmt, espanso).
+      # Engine ^1.90.0.
+      publisher = "tamasfe";
+      name = "even-better-toml";
+      version = "0.21.2";
+      sha256 = "sha256-IbjWavQoXu4x4hpEkvkhqzbf/NhZpn8RFdKTAnRlCAg=";
+    }
+    {
+      # Erlang is the other gap, and nine .erl files ride along with the Elixir
+      # work here. Engine ^1.52.0.
+      publisher = "pgourlain";
+      name = "erlang";
+      version = "1.1.4";
+      sha256 = "sha256-sRS+kE2H2oya2gd/GIVevdovmvyKxKUAQWKnWrgqoPo=";
+    }
+  ];
+
+  # ~/.vscode/extensions/<publisher>.<name>-<version> -> the store copy. The
+  # derivations carry their own identity, so the paths are derived rather than
+  # written out three times and drifting.
+  vscodeExtensionLinks = pkgs.lib.listToAttrs (
+    map (e: {
+      name = ".vscode/extensions/${e.vscodeExtUniqueId}-${e.version}";
+      value.source = "${e}/share/vscode/extensions/${e.vscodeExtUniqueId}";
+    }) vscodeExtensions
+  );
 in
 {
   imports = [
@@ -430,6 +463,34 @@ in
     };
   };
 
+  # awatcher's own config, which the home-manager activitywatch module cannot
+  # write: its `settings` option generates activitywatch/<name>/<name>.toml, and
+  # awatcher reads ~/.config/awatcher/config.toml. Declared here so these filters
+  # are reproducible rather than hand-edited into place.
+  #
+  # The filters are why the Browser and Editor tabs read "No data" while their
+  # buckets were full. Neither view reads its own bucket directly — both
+  # INTERSECT it with window events whose app name appears in a list compiled
+  # into aw-server. Read out of that binary: browsers are Brave, Brave-browser,
+  # chromium, firefox, Google-chrome…; editors are just Code. awatcher reports
+  # `brave-origin` here (nixpkgs names the binary that way, which tools.json
+  # already flagged) and `code`, so both joins matched nothing.
+  #
+  # Renaming at the watcher is the right layer; the only alternative is patching
+  # a list compiled into aw-server. Events already recorded keep the old names —
+  # this fixes what is collected from here on, not the history.
+  xdg.configFile."awatcher/config.toml".text = ''
+    [awatcher]
+
+    [[awatcher.filters]]
+    match-app-id = "brave-origin"
+    replace-app-id = "Brave-browser"
+
+    [[awatcher.filters]]
+    match-app-id = "code"
+    replace-app-id = "Code"
+  '';
+
   # Text expander. The variant must match the session: espanso's own Linux docs
   # say an X11 build on Wayland "may install but silently fail to work", and
   # `loginctl show-session` reports Type=wayland Desktop=KDE here. So x11Support
@@ -495,25 +556,19 @@ in
   # The rules half of settings.json — the editor guard and the nh hook — cannot live
   # here, because Claude Code must be able to write that file. It is declared as
   # managed settings instead; see modules/nixos/claude.nix.
-  home.file = {
-    # One extension declared, the rest deliberately not. The obvious route,
-    # vscode-with-extensions, does not add extensions — it repoints VS Code's
-    # --extensions-dir at a read-only store path (with-extensions.nix:75), so
-    # every extension NOT declared in nix stops loading. That would have taken
-    # out claude-code, foam, nix-ide, elixir-ls and excalidraw-editor, and frozen
-    # claude-code's version behind a hash bump per update.
-    #
-    # Symlinking a single extension into the directory instead leaves it writable
-    # and leaves those five alone: they stay hand-installed, they keep
-    # auto-updating, and impermanence.nix keeps persisting them. Only this one is
-    # a store symlink, which is the whole of what was asked for.
-    #
-    # The directory name follows VS Code's own publisher.name-version convention.
-    # VS Code reads the real version from package.json inside, so the suffix is
-    # only there to keep this legible beside the hand-installed entries.
-    ".vscode/extensions/activitywatch.aw-watcher-vscode-0.5.0".source =
-      "${awWatcherVscode}/share/vscode/extensions/activitywatch.aw-watcher-vscode";
-
+  # Some extensions declared, the rest deliberately not. The obvious route,
+  # vscode-with-extensions, does not add extensions — it repoints VS Code's
+  # --extensions-dir at a read-only store path (with-extensions.nix:75), so every
+  # extension NOT declared in nix stops loading. Taking it would have unloaded
+  # claude-code, foam, nix-ide, elixir-ls and excalidraw-editor, and frozen
+  # claude-code behind a hash bump per update.
+  #
+  # Symlinking extensions in one by one leaves the directory writable and leaves
+  # those five alone: still hand-installed, still auto-updating, still persisted
+  # by impermanence.nix. The split is the point, not a compromise — a watcher and
+  # two grammars are things this repo should reproduce on a fresh machine, while
+  # an editor's day-to-day extensions are state.
+  home.file = vscodeExtensionLinks // {
     ".claude/CLAUDE.md".source = ../../claude/CLAUDE.md;
     ".claude/check-conventions.sh" = {
       source = ../../claude/check-conventions.sh;
