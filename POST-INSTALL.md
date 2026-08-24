@@ -247,6 +247,11 @@ per-instance Java. So the mod *set* is pinned here and the mutable rest is not:
 prismlauncher      # Add Instance -> Import -> minecraft/waylandcraft.mrpack
 ```
 
+It has to be that dialog. `prismlauncher -I <pack>` looks like the automatable
+route and is not: it only identifies loose *resources* — mods, shaders, worlds —
+and rejects an instance pack with `Can't Identify`, including packs Modrinth itself
+produced. The pack format is fine; the flag is the wrong door.
+
 The pack pins Minecraft 26.1.2 and Fabric 0.19.3 because waylandcraft declares
 `"minecraft": "~26.1.2"` and Fabric refuses to load it on anything else — this
 is worth checking against the mod's current release before assuming the pin is
