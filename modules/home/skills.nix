@@ -23,6 +23,9 @@
 # changes.
 { inputs, pkgs, ... }:
 let
+  # The literal ${CLAUDE_PLUGIN_ROOT}, spelled as a nix value because a bare '' collides
+  # with nix's own escape for a literal '' inside an indented string.
+  pluginRootVar = "\${CLAUDE_PLUGIN_ROOT}";
   # ponytail carries BOTH .claude-plugin/plugin.json and .codex-plugin/plugin.json,
   # so the rule above applies to it twice: linked whole, once per agent, and its
   # six skills stay namespaced rather than colliding. Codex discovering them from
@@ -41,7 +44,17 @@ let
     cp -r ${inputs.ponytail} $out
     chmod -R u+w $out
     substituteInPlace $out/hooks/claude-codex-hooks.json \
-      --replace-fail '"command": "node ' '"command": "${pkgs.nodejs}/bin/node '
+      --replace-fail '"command": "node ' '"command": "${pkgs.nodejs}/bin/node ' \
+      --replace-fail '${pluginRootVar}' "$out"
+    # Neither literal may survive: node would not resolve, and CLAUDE_PLUGIN_ROOT is
+    # a Claude-only variable that Codex never sets, so under Codex the path expanded
+    # empty and all three hooks failed every turn. Asserted rather than assumed,
+    # because --replace-fail only guarantees at least one substitution, not that
+    # every occurrence went.
+    if grep -qF -e '"command": "node ' -e '${pluginRootVar}' $out/hooks/claude-codex-hooks.json; then
+      echo "ponytail: an unrewritten node or CLAUDE_PLUGIN_ROOT survived the patch" >&2
+      exit 1
+    fi
   '';
 in
 {

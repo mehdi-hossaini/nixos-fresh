@@ -23,10 +23,15 @@ rec {
   # directory.
   #
   # For Claude one pattern is the whole wall: `Edit(path)` is THE file rule and
-  # governs Edit, Write, MultiEdit and NotebookEdit together. Codex has no file
-  # rule, so `codexMatch` is a substring test against apply_patch's command —
-  # broader than the path glob on purpose, because that filename exists nowhere
-  # else on this machine and a false positive costs one refused edit.
+  # governs Edit, Write, MultiEdit and NotebookEdit together. Verified 2026-08-24
+  # against claude-code 2.1.234 — file permissions are checked against `Edit(path)`
+  # and `Read(path)` only. So do NOT add a `Write(...)` rule beside it to close a
+  # gap: there is none, and such a rule is accepted, never consulted, and warned
+  # about at startup — a lock whose only effect is to look like a second one.
+  #
+  # Codex has no file rule at all, so `codexMatch` is a substring test against
+  # apply_patch's command — broader than the path glob on purpose, because that
+  # filename exists nowhere else here and a false positive costs one refused edit.
   fileRule = {
     pattern = "//etc/nixos/hosts/*/hardware-configuration.nix";
     codexMatch = "*hardware-configuration.nix*";
@@ -35,7 +40,22 @@ rec {
 
   # Everything the inventory marks interactive. Four rules today; the list is
   # whatever tools.json says it is.
-  tuiDenies = map (c: "Bash(${c} *)") (lib.naturalSort agentUnsafe);
+  # Both forms per entry, for the same reason the jj group carries both: `btop *`
+  # does not match a bare `btop`, which is the form actually typed. Claude ran with
+  # only the ` *` variant until 2026-08-24.
+  tuiPatterns = lib.concatMap (c: [
+    c
+    "${c} *"
+  ]) (lib.naturalSort agentUnsafe);
+
+  tuiDenies = map (p: "Bash(${p})") tuiPatterns;
+
+  # The same patterns as a group, for an agent that has no declarative deny and
+  # must run them through a hook instead.
+  tuiGroup = {
+    reason = "this is an interactive TUI, and a session with no terminal cannot drive it — it will hang rather than fail (law 2 and law 3). tools.json lists it under agent_unsafe, which is where both agents get this rule from; its purpose note there names the scriptable form where one exists.";
+    patterns = tuiPatterns;
+  };
 
   bashGroups = [
     {
@@ -62,21 +82,45 @@ rec {
       # non-interactive and stay available, hence the exact-match form for those
       # two.
       reason = "this opens jj's builtin diff editor, which is a TUI: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). The non-interactive forms stay available — `jj split <paths>` takes filesets, `jj resolve --list` lists conflicts, and a conflict is resolved by editing the marked files directly and then `jj squash`.";
+      # Every pattern here exists in two forms, argument-ful and bare, because a
+      # trailing ` *` does NOT match the argument-less command: `Bash(jj diffedit *)`
+      # let bare `jj diffedit` straight through, and `jj * -i *` let `jj squash -i`
+      # through, for both agents, from the day these were written until 2026-08-24.
+      # Both of those open the diff editor and hang a session with no terminal,
+      # which is the exact outcome this group exists to prevent.
       patterns = [
         "jj split"
         "jj resolve"
+        "jj diffedit"
         "jj diffedit *"
+        "jj * -i"
         "jj * -i *"
+        "jj * --interactive"
         "jj * --interactive *"
       ];
     }
     {
       reason = "`sg` here is util-linux's setgid wrapper, not ast-grep. It exists, it runs, and it does something entirely different — the worst shape a typo can have. The tool you want is `ast-grep`, by that name.";
-      patterns = [ "sg *" ];
+      patterns = [
+        "sg"
+        "sg *"
+      ];
+    }
+    {
+      # Bare `codex` opens a TUI. It is NOT in tools.json's agent_unsafe, because
+      # that field generates `Bash(<name> *)` and `codex *` would deny the safe
+      # `codex exec` while missing the bare form that actually hangs — the inversion
+      # is why it was left out. An exact match says the true thing instead: the
+      # word on its own, nothing after it.
+      reason = "bare `codex` opens an interactive TUI and a session with no terminal cannot drive it — it hangs rather than fails (law 3). `codex exec` is the non-interactive form and is not denied.";
+      patterns = [ "codex" ];
     }
     {
       reason = "this reaches a sudo prompt no agent session can answer (law 3). Take the work to a clean `nh os build` and hand the switch over — denying it here turns a confusing `sudo: a terminal is required` after a full build into an immediate hand-off.";
-      patterns = [ "nh os switch *" ];
+      patterns = [
+        "nh os switch"
+        "nh os switch *"
+      ];
     }
   ];
 

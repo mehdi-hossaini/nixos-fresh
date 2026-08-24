@@ -32,7 +32,7 @@ rec {
       escalate "guard could not parse the hook payload as JSON, so it cannot tell whether its rule applies. Asking rather than assuming: a guard that stays quiet when confused is a wall that is trusted and absent."
     [ -n "$cwd" ] ||
       escalate "the hook payload carried no cwd, so this guard cannot tell whether its rule applies here. Asking rather than assuming."
-    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty') ||
+    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end') ||
       escalate "guard could not read the command out of the hook payload."
   '';
 
@@ -48,10 +48,29 @@ rec {
   # the input inside the function rather than assuming it outside is the same fix as
   # the totality one above, one level up.
   requires = pattern: ''
-    case "$cmd" in
-    ${pattern}) ;;
-    *) exit 0 ;;
-    esac
+    # Anchored to the start of a SEGMENT, not a substring of the whole command.
+    # Unanchored, merely NAMING a guarded phrase triggered the guard: under Codex,
+    # which has no per-hook `if` filter to narrow the input first, an `rg` for one
+    # of these phrases in a file ran the guard against a read-only command and
+    # could be denied by it, or paid a full gitleaks + nix flake check first.
+    # Reading a file that quotes a rule is not performing it.
+    #
+    # Both ends are trimmed. Leading alone was not enough: `tr` leaves a trailing
+    # space on every segment that is not the last, so a guarded command followed
+    # by `&& something` yielded a segment with a trailing space and an exact
+    # pattern never matched it.
+    matched=0
+    while IFS= read -r seg; do
+      seg="''${seg#"''${seg%%[! ]*}"}"
+      seg="''${seg%"''${seg##*[! ]}"}"
+      [ -n "$seg" ] || continue
+      case "$seg" in
+      ${pattern}) matched=1 ;;
+      esac
+    done <<REQUIRES_SEGMENTS
+    $(printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n')
+    REQUIRES_SEGMENTS
+    [ "$matched" -eq 1 ] || exit 0
   '';
 
   # The pre-commit gate jj cannot host: jj has no hook support and bypasses
@@ -75,7 +94,7 @@ rec {
   # audit of history itself, run that command by hand.
   publishGate = pkgs.writeShellScript "${a.prefix}-gate-publish" ''
     ${guardPreamble}
-    ${requires ''*"jj commit"* | *"jj git push"*''}
+    ${requires ''"jj commit"* | "jj git push"*''}
         case "$cwd" in
         /etc/nixos | /etc/nixos/*) ;;
         # Total, not a shrug: a cwd outside this repo is definitely not this
@@ -93,7 +112,11 @@ rec {
     $out"
         fi
 
-        out=$(nix flake check 2>&1) && exit 0
+        # Absolute, like the gitleaks call above it. Bare, this evaluated the HOOK
+        # PROCESS's working directory rather than the $cwd just validated: from a
+        # session whose cwd was not this repo it denied every commit with "does not
+        # contain a flake.nix", blaming the tree rather than the guard.
+        out=$(nix flake check /etc/nixos 2>&1) && exit 0
         out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | tail -n 40)
         deny "\`nix flake check\` fails, so this would publish a tree the gate rejects. jj has no hook support and bypasses .git/hooks, so this hook is the pre-commit hook it cannot have. Fix the findings, then run the command again.
     $out"
@@ -104,7 +127,7 @@ rec {
   # working directory and denies on that.
   colocatedCommitGuard = pkgs.writeShellScript "${a.prefix}-guard-git-commit" ''
     ${guardPreamble}
-    ${requires ''*"git commit"*''}
+    ${requires ''"git commit"*''}
     # Total: .jj either is or is not there, and the preamble guaranteed a cwd.
     [ -d "$cwd/.jj" ] || exit 0
     ${jq} -n '{
@@ -153,7 +176,7 @@ rec {
   # build` writes the toplevel it produced; this compares that against the system
   # actually running and reports the gap when the session ends. A readlink and a
   # file read, and it says WHAT is pending rather than nagging in general.
-  builtMarker = "$XDG_RUNTIME_DIR/${a.prefix}-nixos-built";
+  builtMarker = "\${XDG_RUNTIME_DIR:-/tmp}/${a.prefix}-nixos-built";
 
   recordBuild = pkgs.writeShellScript "${a.prefix}-record-build" ''
     set -u
@@ -239,9 +262,17 @@ rec {
     *"nix profile"* | *"nix-env"* | *"bin/activate"* | *">"*) ;;
     *) exit 0 ;;
     esac
-    parsed=$(printf '%s' "$input" | ${jq} -r '@sh "cmd=\(.tool_input.command // "") cwd=\(.cwd // "")"') ||
+    # Two reads rather than one `@sh` line through `eval`. The eval was a real hole:
+    # when .tool_input.command arrives as an ARRAY — which an argv-shaped exec tool
+    # sends — @sh emitted three quoted words, eval ran the second one as a command,
+    # and the guard then died on `set -u` with no decision emitted. That fails OPEN,
+    # so the law-1 wall and the truncation wall both vanished for array payloads,
+    # and a model-controlled argv element got executed inside the guard on the way.
+    # `join(" ")` flattens the array case into the string the rest of this expects.
+    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // "" | if type == "array" then join(" ") else . end') ||
       escalate "guard could not parse a hook payload that looked like it contained a guarded command shape. Asking rather than assuming."
-    eval "$parsed"
+    cwd=$(printf '%s' "$input" | ${jq} -r '.cwd // ""') ||
+      escalate "guard could not read the cwd out of a hook payload that looked like it contained a guarded command shape."
     [ -n "$cmd" ] ||
       escalate "the hook payload carried no command, so this guard cannot inspect its shape. Asking rather than assuming."
     deny() {
@@ -291,7 +322,7 @@ rec {
   # this denies early and says the command to run.
   untrackedNixGuard = pkgs.writeShellScript "${a.prefix}-guard-untracked-nix" ''
     ${guardPreamble}
-    ${requires ''*"nh os build"* | *"nix flake check"*''}
+    ${requires ''"nh os build"* | "nix flake check"*''}
     case "$cwd" in
     /etc/nixos | /etc/nixos/*) ;;
     *) exit 0 ;;
@@ -340,10 +371,10 @@ rec {
     # payload without this substring cannot be about a spill file, so allowing it
     # is an answer rather than a guess.
     case $input in
-    *"tool-results/"*) ;;
+    ${a.spillMatch}) ;;
     *) exit 0 ;;
     esac
-    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty') ||
+    cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end') ||
       escalate "guard could not parse a hook payload that named a spill file. Asking rather than assuming."
     [ -n "$cmd" ] ||
       escalate "the hook payload carried no command, so this guard cannot inspect its shape. Asking rather than assuming."
@@ -367,7 +398,7 @@ rec {
     # query but routinely extracts most of the file, and it is the exact shape the
     # 54 KB was spent on. `grep -A/-B` covers the honest version of that intent.
     case $probe in
-    *grep*|*" rg "*|*" jq "*|*" wc "*) exit 0 ;;
+    *" grep "*|*" rg "*|*" jq "*|*" wc "*) exit 0 ;;
     *" sed "*|*" cat "*|*" head "*|*" tail "*|*" awk "*)
       deny "the harness spilled this result to a file to keep it out of context; paginating it back in spends exactly what the spill saved. Measured on this machine: 232 KB spilled, 54 KB pulled straight back. Two ways forward, and the second is the one that gets forgotten. (1) grep/rg the file, if you need a fact out of it. (2) If you genuinely need all of it, re-run the ORIGINAL command in smaller batches so each result lands in context directly. A spill means the read was sized wrong, not that the content is off limits." ;;
     *) exit 0 ;;

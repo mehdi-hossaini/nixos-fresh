@@ -47,14 +47,28 @@ pass() { printf 'ok    %s\n' "$*"; }
 # otherwise pass every law here.
 if [ -z "$GUARD" ]; then
   note "building managed settings from $FLAKE ..."
+  # AGENT picks which side is replayed. Claude's guards are named in a JSON
+  # settings file and Codex's in a TOML requirements file, but both identify a
+  # guard by its statusMessage, so one lookup covers either once the file is
+  # chosen. Defaulting to claude alone is how the Codex hooks went unreplayed: the
+  # totality law below is exactly what the escalate-to-deny collapse changes, and
+  # nothing was checking it over there.
+  case "${AGENT:-claude}" in
+  codex) attr='environment.etc."codex/requirements.toml".source' ;;
+  *) attr='environment.etc."claude-code/managed-settings.json".source' ;;
+  esac
   settings=$(nix build --no-link --print-out-paths \
-    "$FLAKE#nixosConfigurations.$HOST.config.environment.etc.\"claude-code/managed-settings.json\".source" 2>/dev/null | tail -1)
+    "$FLAKE#nixosConfigurations.$HOST.config.$attr" 2>/dev/null | tail -1)
   [ -n "$settings" ] && [ -e "$settings" ] ||
     {
-      note "could not build managed settings from $FLAKE"
+      note "could not build ${AGENT:-claude} settings from $FLAKE"
       exit 2
     }
-  GUARD=$(jq -r --arg s "$STATUS" \
+  # tomlq takes jq syntax over TOML, so the filter is the same either way.
+  reader=jq
+  [ "${AGENT:-claude}" = codex ] && reader=tomlq
+  # shellcheck disable=SC2016  # $s is jq syntax; the reader is jq or tomlq, which share it
+  GUARD=$("$reader" -r --arg s "$STATUS" \
     '.hooks.PreToolUse[].hooks[] | select(.statusMessage==$s) | .command' "$settings" | head -1)
   [ -n "$GUARD" ] ||
     {

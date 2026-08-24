@@ -77,6 +77,10 @@ let
       rulesFile = "CLAUDE.md";
       rulesPath = "~/.claude/CLAUDE.md";
       conventionsScript = "~/.claude/check-conventions.sh";
+      # The literal the harness puts in a spilled result path. Agent-specific:
+      # Codex spills through a different shape entirely, so a guard keyed on this
+      # one is inert there — see codex.nix.
+      spillMatch = ''*"tool-results/"*'';
       inherit escalateFn;
     };
   };

@@ -28,17 +28,23 @@ read -r -a SKILLS <<<"${SKILLS:-$HOME/.claude/skills $HOME/.codex/skills}"
 # check still scanning one file would have gone on passing while silently
 # asserting less — which is the failure this check exists to catch, turned on
 # itself. Space-separated, so the GUARDS= override still takes one path or many.
-GUARDS_DEFAULT="/etc/nixos/modules/nixos/claude.nix\
- /etc/nixos/modules/nixos/agent-guards.nix\
- /etc/nixos/modules/nixos/codex.nix"
-read -r -a GUARDS <<<"${GUARDS:-$GUARDS_DEFAULT}"
+# DISCOVERED, not listed. A hard-coded list went stale twice in one day: it named
+# only claude.nix after the guards moved to agent-guards.nix, and then omitted
+# agent-denies.nix on the very commit that fixed the first omission. Both times the
+# check kept passing while asserting less, which is the failure it exists to catch.
+# Anything under modules/nixos that cites a law is a guard file by definition.
+if [ -n "${GUARDS:-}" ]; then
+  read -r -a GUARDS <<<"$GUARDS"
+else
+  mapfile -t GUARDS < <(grep -rliE 'law [0-9]+' /etc/nixos/modules/nixos --include='*.nix' 2>/dev/null | sort)
+fi
 # Files this repo declares into ~/.claude. Each must end up a nix-store symlink;
 # a plain file there means someone edited the copy instead of the source.
-DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh")
+DECLARED=("$HOME/.claude/CLAUDE.md" "$HOME/.claude/check-conventions.sh" "$HOME/.codex/AGENTS.md")
 # Law 5. The whole harness lives in these two paths and survives a reboot only
 # because impermanence.nix names them. Drop either and the machine comes back
 # without its rules or without its Claude state — with no warning until then.
-PERSISTED=("/etc/nixos" ".claude")
+PERSISTED=("/etc/nixos" ".claude" ".codex")
 
 pass=0
 fail=0
@@ -372,11 +378,19 @@ for skdir in "${SKILLS[@]}"; do
     ok "no $skdir directory — nothing hand-written to drift"
     continue
   fi
+  # The exclusion is scoped to the codex directory, not applied to both. Codex
+  # ships its own skills into ~/.codex/skills/.system; Claude has no equivalent, so
+  # excluding .system there would only blind the check to a hand-written rule
+  # hidden in a dot-directory — a hole this assertion did not previously have.
+  ex=()
+  case "$skdir" in
+  *.codex/skills) ex=(-E .system) ;;
+  esac
   handwritten=()
   while read -r f; do
     [[ "$(readlink -f "$f")" == /nix/store/* ]] || handwritten+=("$f")
-  done < <(fd -H -I -t f -t l . "$skdir" -E .system 2>/dev/null)
-  n=$(fd -H -I -t f -t l . "$skdir" -E .system 2>/dev/null | wc -l)
+  done < <(fd -H -I -t f -t l . "$skdir" "${ex[@]}" 2>/dev/null)
+  n=$(fd -H -I -t f -t l . "$skdir" "${ex[@]}" 2>/dev/null | wc -l)
   if [ ${#handwritten[@]} -ne 0 ]; then
     for f in "${handwritten[@]}"; do
       bad "$f is hand-written — a global skill goes in /etc/nixos/claude/skills/, a project one in that project's repo"

@@ -9,8 +9,8 @@
 #    `Bash(<prefix> *)` patterns, generated from tools.json's agent_unsafe. Codex
 #    has nothing equivalent: its requirements.toml `[rules]` is a network and
 #    sandbox-executable policy, not a command matcher. So the TUI denies that are
-#    declarative over there are a hook here — tuiGuard below, built from the same
-#    tools.json field so the two agents cannot disagree about what is unsafe.
+#    declarative over there are folded into the same deny hook here, generated from
+#    the same tools.json field, so neither agent can disagree about what is unsafe.
 #
 # 2. There is no per-hook `if`. Claude filters each guard with `if = "Bash(jj
 #    commit *)"`; Codex has only `matcher`, a regex over the tool name. Every
@@ -71,14 +71,14 @@ let
       # about the machine, not about Claude, and reaching through the other
       # agent's home directory would make this depend on that symlink existing.
       conventionsScript = "${../../claude/check-conventions.sh}";
+      # Codex has no `tool-results` path — 0 occurrences in the 0.147.0 binary,
+      # against 60 for `output_spill`. Both are matched so the guard is not simply
+      # inert, but the second has NOT been seen in a real payload, which is why
+      # AGENTS.md calls this rule best-effort rather than enforced.
+      spillMatch = ''*"tool-results/"* | *"output_spill"*'';
       inherit escalateFn;
     };
   };
-
-  # tools.json's agent_unsafe, as a hook rather than as a deny list — see note 1
-  # in the header. Matching is on a padded, separator-flattened probe so a verb is
-  # found the same way whether it opens the command or follows a pipe, which is
-  # the trick spillPaginationGuard already uses.
 
   denies = import ./agent-denies.nix { inherit lib agentUnsafe; };
 
@@ -87,7 +87,10 @@ let
   # mechanical: quote the literal runs and leave the `*`s outside, since a case
   # pattern with a bare space in it is a syntax error rather than a wide match.
   toCasePattern =
-    p: lib.concatStringsSep "*" (map (s: if s == "" then "" else ''"${s}"'') (lib.splitString "*" p));
+    p:
+    lib.concatStringsSep "*" (
+      map (s: if s == "" then "" else lib.escapeShellArg s) (lib.splitString "*" p)
+    );
 
   denyGuard = pkgs.writeShellScript "codex-guard-denies" ''
     ${guards.guardPreamble}
@@ -101,12 +104,18 @@ let
     # payload lands.
     while IFS= read -r seg; do
       seg="''${seg#"''${seg%%[! ]*}"}"
+      # BOTH ends. Leading alone was the bug: `tr` leaves a trailing space on every
+      # segment that is not the last, so `jj split && jj log` produced "jj split "
+      # and the exact pattern "jj split" never matched it — the deny held for
+      # `jj log && jj split` and not for the reverse, which is the ordering that
+      # happened to get tested.
+      seg="''${seg%"''${seg##*[! ]}"}"
       [ -n "$seg" ] || continue
       case "$seg" in
       ${lib.concatMapStringsSep "\n      " (
         g:
         "${lib.concatMapStringsSep " | " toCasePattern g.patterns}) deny ${lib.escapeShellArg g.reason} ;;"
-      ) denies.bashGroups}
+      ) (denies.bashGroups ++ [ denies.tuiGroup ])}
       esac
     done <<SEGMENTS
     $(printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n')
@@ -124,6 +133,12 @@ let
     input=$(cat)
     cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty') ||
       escalate "guard could not read the patch out of the hook payload."
+    # Total, like every other guard here. It used to fall through to `exit 0` when
+    # the command was empty, which made it a silent allow on any payload shaped
+    # differently from apply_patch's — the failure this file rejects shellcheckGate
+    # for, five entries below. An empty command means "cannot tell", not "fine".
+    [ -n "$cmd" ] ||
+      escalate "the hook payload carried no command, so this guard cannot tell which file is being written."
     case "$cmd" in
     ${denies.fileRule.codexMatch}) ;;
     *) exit 0 ;;
@@ -135,23 +150,6 @@ let
         permissionDecisionReason: $r
       }
     }'
-  '';
-  tuiGuard = pkgs.writeShellScript "codex-guard-tui" ''
-    ${guards.guardPreamble}
-    probe=$(printf ' %s ' "$cmd" | tr ';|&()\n\t' '       ')
-    case $probe in
-    ${lib.concatMapStringsSep " | " (c: ''*" ${c} "*'') agentUnsafe})
-      ${jq} -n '{
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: "law 2 and law 3: this is an interactive TUI, and a session with no terminal cannot drive it — it will hang rather than fail. tools.json lists it under agent_unsafe, which is where both agents get this rule from. Its purpose note there names the scriptable form where one exists."
-        }
-      }'
-      exit 0
-      ;;
-    esac
-    exit 0
   '';
 
   # `matcher` is a regex over the tool name. "Bash" is correct and is not a
@@ -174,9 +172,8 @@ let
   requirements = toml.generate "codex-requirements.toml" {
     hooks.PreToolUse = [
       {
-        matcher = "^Bash$";
+        matcher = "^(Bash|exec_command|shell_command|unified_exec|local_shell)$";
         hooks = [
-          (mkHook "${tuiGuard}" "Checking for an interactive TUI" 10)
           (mkHook "${denyGuard}" "Checking the deny list" 10)
           (mkHook "${guards.colocatedCommitGuard}" "Checking for a colocated repo" 10)
           (mkHook "${guards.publishGate}" "Gating on gitleaks + nix flake check" 180)
