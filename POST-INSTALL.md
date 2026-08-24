@@ -314,9 +314,21 @@ compiler existing to shadow a project's pinned one.
 
 **Alacritty has no tabs — so it opens into zellij instead.** `terminal.shell` in
 `modules/home/default.nix` makes zellij the shell, so a window arrives already
-inside a multiplexer: `Ctrl+t n` for a new tab, `Ctrl+p` for panes. Bare, with no
-`attach`, so two windows are two independent sessions rather than two views of
-one. `alacritty -e <cmd>` still bypasses it when a raw shell is wanted.
+inside a multiplexer. Bare, with no `attach`, so two windows are two independent
+sessions rather than two views of one. `alacritty -e <cmd>` still bypasses it when
+a raw shell is wanted.
+
+It starts **locked** (`zellij/config.kdl`), which is what keeps it out of neovim's
+way. zellij's defaults claim nine Ctrl chords — `b g h n o p q s t` — and LazyVim
+binds `<C-h>` and `<C-s>` while vim itself wants `<C-o>`, `<C-n>`, `<C-p>` and
+`<C-b>`. Locked mode forwards all of them and holds four keys only:
+
+| `Alt+t` | new tab |
+| `Alt+Left` / `Alt+Right` | previous / next tab |
+| `Alt+Space` | unlock for everything else — then `t` tabs, `p` panes, `n` resize, `o` session, `s` scroll; `Alt+Space` again to relock |
+
+If tabs ever feel like they need less than one keypress, the structural answer is
+kitty, whose native tabs sit on `Ctrl+Shift+*` where no terminal program looks.
 
 zellij was installed for exactly this job on day one and wired to nothing for
 eleven days. If the multiplexer itself grates rather than the missing tabs,

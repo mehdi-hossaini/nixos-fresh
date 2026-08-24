@@ -479,6 +479,13 @@ in
     "nvim/stylua.toml".source = ../../nvim/stylua.toml;
     "nvim/lua/config".source = ../../nvim/lua/config;
     "nvim/lua/plugins".source = ../../nvim/lua/plugins;
+
+    # zellij wrote its own 20 KB default dump here on first run — undeclared
+    # state for a program that is the shell of every terminal window. This
+    # replaces it with the keybinding decision, which is a rule and belongs in
+    # the repo. Not merged into a `programs.zellij` module because zellij stays
+    # in packages.nix and adding the module would install a second copy.
+    "zellij/config.kdl".source = ../../zellij/config.kdl;
   };
 
   # gcc, gnumake, nodejs and unzip are all in tools.json's not_installed list,

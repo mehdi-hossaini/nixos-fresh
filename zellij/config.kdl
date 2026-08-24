@@ -1,0 +1,37 @@
+// zellij is Alacritty's shell (modules/home/default.nix), so every terminal window
+// starts inside it — and every key zellij claims is a key the program inside never
+// sees. Its defaults claim nine Ctrl chords (b g h n o p q s t) and most of the Alt
+// row. That was harmless until neovim arrived: LazyVim actively binds <C-h> (window
+// left) and <C-s> (save), and vim's own <C-o> jumplist, <C-n>/<C-p> completion and
+// <C-b> page-up all sit in the same set.
+//
+// Locked mode is the resolution rather than a workaround. zellij forwards every key
+// and holds only the four named below. Rehoming the nine chords instead would buy
+// the same result once, and have to be redone the next time a tool wants a key.
+default_mode "locked"
+
+keybinds {
+    locked {
+        // The tab operations, direct — no prefix, because these are the whole
+        // reason zellij is the shell at all. Verified free: LazyVim's only Alt
+        // bindings are <A-j>/<A-k> (move line), and nothing in Plasma's
+        // kglobalshortcutsrc binds Space or these arrows.
+        bind "Alt t" { NewTab; }
+        bind "Alt Left" { GoToPreviousTab; }
+        bind "Alt Right" { GoToNextTab; }
+
+        // Everything else zellij does, on demand: Alt+Space, then t/p/n/o/s for
+        // tab, pane, resize, session and scroll modes.
+        bind "Alt Space" { SwitchToMode "normal"; }
+
+        // zellij binds Ctrl+g here by default. Unbound so the claim above holds for
+        // *every* Ctrl chord — `zellij action switch-mode normal`, run from anywhere,
+        // is the way back if Alt+Space is ever swallowed by something upstream.
+        unbind "Ctrl g"
+    }
+    normal {
+        // Symmetric exit. Esc and Enter only return to normal from a submode, so
+        // without this the way back to locked would be the Ctrl+g just unbound.
+        bind "Alt Space" { SwitchToMode "locked"; }
+    }
+}
