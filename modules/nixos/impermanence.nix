@@ -86,6 +86,20 @@ in
     # Mode column is `-`: recurse ownership, leave permissions alone, so the
     # 0600s inside .git stay 0600.
     "Z /persistent/system/etc/nixos - ${user} ${config.users.users.${user}.group} -"
+  ]
+  ++ lib.optionals cfg.hasDataDisk [
+    # hasDataDisk unlocks cryptdata and mounts it, and stops there — so /data
+    # came up as a root-owned 0755 root with nothing inside and no way for the
+    # user to put anything there. It sat that way from install until 2026-08-24:
+    # 413 GiB free, 6.1 MiB used, "empty" because it was unwritable rather than
+    # unwanted. Mounting a disk is not the same as making it usable, and only the
+    # second half is visible to whoever tries to use it.
+    #
+    # Split rather than chowning /data itself, because the two halves want
+    # different owners: work is yours, and a backup repository is root's — it has
+    # to read files the user cannot, so it cannot run as the user.
+    "d /data 0755 root root -"
+    "d /data/${user} 0700 ${user} ${config.users.users.${user}.group} -"
   ];
 
   environment.persistence."/persistent/system" = {

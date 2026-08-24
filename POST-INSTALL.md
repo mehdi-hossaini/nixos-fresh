@@ -147,6 +147,7 @@ its directory.
 | **Boot** | systemd-boot, 10 generations, systemd in initrd, `quiet loglevel=3 nowatchdog`, `/tmp` on disk (never tmpfs) |
 | **Root filesystem** | Impermanent — `@root` wiped and re-snapshotted from `@root-blank` every boot, outgoing root kept 7 days in `old_roots/` |
 | **Persisted (system)** | `/etc/nixos`, NM connections + runtime, `/etc/ssh`, `/etc/machine-id`, `/var/log`, `/var/lib/{nixos,bluetooth,systemd,NetworkManager,fwupd,AccountsService}`, `/var/db/sudo` |
+| **Data disk** | `hasDataDisk` hosts get 413 GiB at `/data`: `/data/<user>` is yours (0700), the root of it stays root's so a backup repository can live beside your files without being readable by you |
 | **Persisted (user)** | `Projects Documents Downloads Pictures Videos Music Desktop`, `.ssh`, `.gnupg`, `.claude`, `.config`, `.local/{share,state}`, `.cargo`, `.cache/{sccache,nix,mesa_shader_cache,nvidia}` |
 | **Desktop** | KDE Plasma 6 on Wayland, SDDM (Wayland), `hardware.graphics` + 32-bit |
 | **Keyboard** | xkb `se,ir`, caps→escape, alt+shift layout toggle; console `sv-latin1` |
