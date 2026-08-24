@@ -50,13 +50,6 @@
       ]
     },
     {
-      "name": "ast-grep",
-      "package": "ast-grep",
-      "category": "search",
-      "purpose": "Structural search and rewrite over a language's AST — use for code patterns that regex handles badly.",
-      "notes": "Invoke as `ast-grep`, never as `sg`. `sg` on this machine resolves to /run/wrappers/bin/sg (util-linux setgid), not ast-grep."
-    },
-    {
       "name": "jq",
       "package": "jq",
       "category": "search",
@@ -235,7 +228,7 @@
       ],
       "category": "search",
       "purpose": "jq's query language over YAML (`yq`), TOML (`tomlq`) and XML (`xq`). Use instead of sed for structured config — a workflow file, a devenv.yaml.",
-      "notes": "This is the python wrapper (kislyuk), deliberately not `yq-go`: it takes jq syntax, so there is no second query language on this machine. A `yq` example found online may be written for yq-go and will not parse."
+      "notes": "This is the python wrapper (kislyuk), deliberately not `yq-go`: it takes jq syntax, so there is no second query language on this machine. A `yq` example found online may be written for yq-go and will not parse. This is also why yq is declared despite being barely invoked — four packages ship /bin/yq (yq-go, yq, python3xxPackages.yq) and yq-go sorts first, so `, yq` would hand you the incompatible one. The declaration is what pins which yq."
     },
     {
       "name": "file",
@@ -269,15 +262,6 @@
       "purpose": "Fuzzy finder. Interactive — needs a TTY; not useful non-interactively.",
       "agent_unsafe": [
         "fzf"
-      ]
-    },
-    {
-      "name": "btop",
-      "package": "btop",
-      "category": "cli",
-      "purpose": "Resource monitor. Interactive TUI — do not launch from an agent shell.",
-      "agent_unsafe": [
-        "btop"
       ]
     },
     {
@@ -337,13 +321,6 @@
       "category": "editor",
       "purpose": "Markdown notes over a local folder of plain files. GUI, so an agent shell cannot drive it — read and write the vault's .md files directly instead.",
       "notes": "Unfree (Obsidian EULA); allowUnfree is already set in modules/nixos/nix.nix. The vault is ordinary markdown on disk and is NOT persisted by virtue of being a vault: keep it under ~/Documents or ~/Projects, which impermanence.nix lists. ~/.config/obsidian is covered by the wholesale .config entry."
-    },
-    {
-      "name": "sticky",
-      "package": "sticky",
-      "category": "editor",
-      "purpose": "Sticky notes — one floating pad per note. GUI, so an agent shell cannot drive it; the notes themselves are JSON at ~/.config/sticky/notes.json and can be read or written directly. Appears in the app menu as `Notes`.",
-      "notes": "Its own always-on-top checkbox is a no-op under Wayland (it calls GTK set_keep_above, which has no protocol behind it) — the KWin window rule in modules/home/plasma.nix does it instead, matching window class `sticky.py`, which is what KWin reports rather than `sticky`. Costs +188 MiB against this closure because Mint xapp pulls in mate-panel; `xpad` is the +5 MiB alternative if that matters. State is covered by the wholesale .config entry in impermanence.nix."
     },
     {
       "name": "prismlauncher",
@@ -433,6 +410,24 @@
         "unzip"
       ],
       "workaround": "`nix shell nixpkgs#unzip`, or `bsdtar`/`tar` where the format allows."
+    },
+    {
+      "names": [
+        "ast-grep"
+      ],
+      "workaround": "`, ast-grep …` runs it for one command, or `nix shell nixpkgs#ast-grep -c`. Dropped 2026-08-24 after 0 invocations in 10,354 recorded commands: this tree is nix, markdown and a little bash, which rg covers. Note `sg` is util-linux's setgid wrapper and always was — it is not ast-grep."
+    },
+    {
+      "names": [
+        "btop"
+      ],
+      "workaround": "`, btop`, or Plasma's own System Monitor, which is installed and was the reason btop went unused. Dropped 2026-08-24."
+    },
+    {
+      "names": [
+        "sticky"
+      ],
+      "workaround": "`, sticky`. Dropped 2026-08-24: its notes.json held an empty list, obsidian does the same job and is actually used, and it pulled mate-panel in behind Mint's xapp for +188 MiB. `xpad` is the +5 MiB equivalent if a floating pad is ever wanted again."
     }
   ],
   "conventions": [

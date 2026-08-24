@@ -158,7 +158,7 @@ its directory.
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
-| **Packages** | `brave-origin alacritty zellij claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Packages** | `brave-origin alacritty zellij claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
 | **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=nvim`, `CLAUDE_CONFIG_DIR` |
 
@@ -346,6 +346,21 @@ tabs natively.
 
 Steam, OBS, any gaming stack, the CachyOS kernel, Firefox, Konsole, Ghostty,
 and system-wide Rust. Each was a decision, not an oversight.
+
+**ast-grep, btop and sticky were here and now are not.** All three were declared
+and never reached for — the shape the closing section describes. ast-grep had zero
+invocations against rg's 535 in the same history, and this tree is nix, markdown
+and a little bash; btop duplicated Plasma's own System Monitor and was denied to
+agents besides, so only the one person who never ran it could; sticky held an empty
+notes list next to a heavily used Obsidian, and pulled mate-panel in behind Mint's
+xapp for +188 MiB. `comma` is what made dropping them cheap rather than a decision
+to relitigate later: `, btop` is one keystroke and no declaration.
+
+`yq` was on that list and stayed, for a reason worth recording. Four packages ship
+`/bin/yq` and `yq-go` sorts first, so `, yq` hands you the one whose syntax is *not*
+jq's. Here the declaration is not habit-support, it is disambiguation — dropping it
+would not have left the tool one keystroke away, it would have left a different tool
+one keystroke away.
 
 **VS Code was here and now is not.** Neovim running LazyVim replaced it, and the
 removal took more than a package line: `EDITOR` and jj's `ui.editor` both pointed

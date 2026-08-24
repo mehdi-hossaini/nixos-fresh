@@ -300,8 +300,9 @@ let
   };
 in
 {
-  # One accepted cost of the deny patterns: `Bash(btop *)` also blocks
-  # `btop --version`, which law 6 otherwise recommends. Deny beats allow, so no
+  # One accepted cost of the deny patterns: `Bash(nvim *)` also blocks
+  # `nvim --headless`, the one scriptable shape, and `nvim --version` with it,
+  # which law 6 otherwise recommends. Deny beats allow, so no
   # exception can be carved back out, and a pattern cannot express "every
   # invocation except the informational flags". Versions for those come from
   # tools.json or `nix eval` instead.

@@ -253,9 +253,9 @@ switch to the user. New files must be `git add`ed first or the flake cannot see 
 
 - Login shell is **fish**, which is not POSIX. Write scripts for bash and run them
   with `bash script.sh` rather than fighting `export`, arrays, or `$(...)` quirks.
-- Prefer `rg` over `grep -r` and `fd` over `find`. For code patterns that regex
-  handles badly, use `ast-grep` — invoked by that name, never as `sg`, which here is
-  util-linux's setgid wrapper.
+- Prefer `rg` over `grep -r` and `fd` over `find`. No structural/AST search is on
+  PATH: `, ast-grep …` fetches one for a single command on the rare occasion a
+  regex genuinely cannot express the pattern.
 - `curl` is present; `wget` is not.
 - Edit a file in place with `| sponge`, never `> tmp && mv tmp f` — `> f` truncates
   before the reader runs, and a dropped `&&` leaves the edit unapplied and silent.
@@ -265,7 +265,7 @@ switch to the user. New files must be `git add`ed first or the flake cannot see 
   /etc/nixos#nixosConfigurations.<host>.options.<path>.description` gives the docs and
   `…config.<path>` the live value; `nixos-option <path>` also works. `nix eval` is
   allow-listed, so neither prompts.
-- Do not launch interactive TUIs from an agent shell — `jjui`, `btop`, `fzf` and
+- Do not launch interactive TUIs from an agent shell — `nvim`, `jjui`, `fzf` and
   `zellij attach` among them; the inventory flags the rest in its `purpose` notes.
   `zellij action` / `zellij run` are scriptable.
 - Persisted paths are listed in `modules/nixos/impermanence.nix` (law 5).

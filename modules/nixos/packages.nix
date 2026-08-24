@@ -29,22 +29,6 @@
     # Obsidian's own config sits in ~/.config/obsidian and rides along with the
     # wholesale .config entry there.
     obsidian
-    # Sticky notes: one floating pad per note. State is a single
-    # ~/.config/sticky/notes.json with timestamped backups beside it, so the
-    # wholesale .config entry in impermanence.nix already covers it. The app menu
-    # entry reads "Notes", not "Sticky".
-    #
-    # Costs +188 MiB rather than its own 683 KiB: it reaches GTK through Mint's
-    # xapp, which drags mate-panel and its dependencies in behind it, 114 MiB of
-    # that libmateweather alone. `xpad` does the same job for +5 MiB and is the
-    # swap to make if that ever matters; nothing else here depends on which of
-    # the two it is, except the window class named in the KWin rule.
-    #
-    # Its own always-on-top checkbox does nothing in this session, because it
-    # calls GTK set_keep_above and Wayland has no protocol for a client asking to
-    # be raised. KWin has to do it instead — modules/home/plasma.nix, matching
-    # window class `sticky.py`, which is what KWin reports rather than `sticky`.
-    sticky
     prismlauncher
 
     claude-code
@@ -78,10 +62,8 @@
     devenv
     sccache
 
-    # Agent toolbelt — the tools a coding agent reaches for via Bash. Structural
-    # AST search beats regex grep for code patterns; the other two are the
-    # pre-commit checks worth having on PATH rather than remembering to install.
-    ast-grep
+    # Agent toolbelt — the pre-commit checks worth having on PATH rather than
+    # remembering to install.
     shellcheck
     gitleaks
     # shfmt formats what shellcheck only complains about — the pair is worth
@@ -114,7 +96,6 @@
     ripgrep
     fd
     jq
-    btop
 
     # The one-off half of law 1, in one step: `, <cmd>` resolves the command
     # through the same nix-index database nix-locate reads, fetches the package

@@ -179,14 +179,6 @@ fi
 
 # ── traps that a rule in CLAUDE.md depends on staying true ────────────────────
 head_ "Traps"
-sg_path=$(command -v sg 2>/dev/null || true)
-if [ -z "$sg_path" ]; then
-  bad "sg resolves to nothing — the 'never call ast-grep as sg' warning is stale"
-elif [ "$sg_path" = "$(command -v ast-grep 2>/dev/null || true)" ]; then
-  bad "sg now IS ast-grep — the warning in CLAUDE.md is inverted"
-else
-  ok "sg is $sg_path, not ast-grep (warning still warranted)"
-fi
 
 # the passwd entry and the PATH lookup are different symlinks to the same fish
 login_shell=$(getent passwd "$USER" | cut -d: -f7)
