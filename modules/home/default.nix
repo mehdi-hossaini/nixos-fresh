@@ -16,7 +16,7 @@ let
     ;
 
   # One string, four styles. Change this to reface the terminal.
-  terminalFont = "JetBrainsMono Nerd Font Mono";
+  terminalFont = "Geist Mono";
 
   # VS Code extensions declared here rather than hand-installed. Only these; the
   # five already in ~/.vscode/extensions stay hand-installed on purpose — see the
@@ -197,9 +197,11 @@ in
     enable = true;
     settings = {
       # ── Typography ──────────────────────────────────────────────────────
-      # The Nerd Font *Mono* variant, not plain "Nerd Font": Mono forces icon
-      # glyphs to single cell width. The proportional variants let icons bleed
-      # into the next cell and shear the whole grid.
+      # Geist Mono carries no icon glyphs, so those arrive through the
+      # fontconfig fallback — JetBrainsMono Nerd Font *Mono*, not plain "Nerd
+      # Font": the Mono variant forces icons to single cell width. The
+      # proportional variants let them bleed into the next cell and shear the
+      # whole grid.
       font = {
         normal = {
           family = terminalFont;
@@ -265,6 +267,20 @@ in
       };
 
       # ── Behaviour ───────────────────────────────────────────────────────
+      # Alacritty has no tabs and upstream has refused them for years — the
+      # answer it gives is "run a multiplexer", and zellij is already installed
+      # here for precisely that (tools.json: "the tabs Alacritty deliberately
+      # lacks"). Running it *as* the shell is what makes that answer actually
+      # load, instead of it depending on remembering to type `zellij` first.
+      #
+      # Bare, with no `attach`: each window gets its own session, so two windows
+      # are independent rather than mirroring one another's panes. `alacritty -e
+      # <cmd>` still bypasses this entirely when a raw shell is wanted.
+      terminal.shell = {
+        program = "${pkgs.zellij}/bin/zellij";
+        args = [ ];
+      };
+
       scrolling = {
         history = 50000;
         multiplier = 3;
@@ -449,6 +465,27 @@ in
   };
 
   programs.bat.enable = true;
+
+  # `ls` was still coreutils. eza sat in packages.nix for eleven days with no
+  # alias, so nothing ever reached for it — the same failure zellij had, and it
+  # is visible in this machine's own history: `ls` 599 times, `eza` zero. The
+  # fish integration is the whole fix, because it puts the tool inside a habit
+  # that already exists rather than asking for a new one (ls/ll/la/lt/lla).
+  #
+  # Declared here rather than in packages.nix because it is a user tool and the
+  # aliases are a user-shell concern; the aliases are mkDefault and land only in
+  # interactive fish, so agent shells and scripts still get coreutils `ls` and
+  # its parseable output.
+  #
+  # icons is not decoration here — modules/nixos/fonts.nix installs a Nerd Font
+  # and its comment names `eza --icons` as the reason. Until now that was
+  # aspirational: the font was there for a flag nothing passed.
+  programs.eza = {
+    enable = true;
+    enableFishIntegration = true;
+    icons = "auto";
+    git = true;
+  };
   programs.fzf = {
     enable = true;
     enableFishIntegration = true;

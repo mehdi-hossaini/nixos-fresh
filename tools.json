@@ -250,7 +250,7 @@
       "name": "eza",
       "package": "eza",
       "category": "cli",
-      "purpose": "Modern ls replacement (`eza -la`, `eza --tree`)."
+      "purpose": "Modern ls replacement (`eza -la`, `eza --tree`). Aliased over ls/ll/la/lt/lla in interactive fish, so a user's `ls` is eza — but the aliases do not reach a non-interactive agent shell, which still gets coreutils `ls` and its parseable output."
     },
     {
       "name": "fzf",
@@ -274,7 +274,7 @@
       "name": "zellij",
       "package": "zellij",
       "category": "terminal",
-      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks. Can be driven non-interactively via `zellij action` / `zellij run`.",
+      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks, and now Alacritty's shell (modules/home/default.nix), so a terminal window is already inside a session rather than something you launch zellij from. Can be driven non-interactively via `zellij action` / `zellij run`.",
       "agent_unsafe": [
         "zellij attach"
       ]

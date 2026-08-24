@@ -72,7 +72,6 @@
     git
     gh
     jujutsu
-    jjui
 
     # Dev environments. No rustc/cargo here on purpose: toolchains are
     # per-project via devenv's languages.rust (which uses rust-overlay
@@ -115,9 +114,6 @@
     # CLI
     ripgrep
     fd
-    eza
-    bat
-    fzf
     jq
     btop
   ];

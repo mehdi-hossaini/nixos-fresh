@@ -157,9 +157,9 @@ its directory.
 | **User** | `mutableUsers = false`, password hash from `/persistent/system/secrets`, fish shell, groups `wheel networkmanager video audio input`; activation *fails loudly* if the hash file is missing |
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
-| **Fonts** | JetBrainsMono Nerd Font, set as default monospace |
-| **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu jjui devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd eza bat fzf jq btop` + nix-ld |
-| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty, bat, fzf |
+| **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
+| **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt` |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=code --wait`, `CLAUDE_CONFIG_DIR` |
 
 ## Varies per machine — `hosts/<name>/`
