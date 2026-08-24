@@ -19,7 +19,7 @@
       "/etc/profiles/per-user/mehti/bin — home-manager programs (modules/home/default.nix)"
     ],
     "env": {
-      "EDITOR": "code --wait — interactive sessions only. Agent sessions pin JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL to `false` via ~/.claude/settings.json, so a command that would open an editor fails fast instead of hanging on a GUI window. That guard does not cover jj's diff editor (jj split/diffedit/resolve), which is a builtin TUI.",
+      "EDITOR": "nvim — interactive sessions only, and set on jj's ui.editor as well as the variable, so `jj describe` does not depend on which shell launched it. Agent sessions pin JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL to `false` via managed settings, so a command that would open an editor fails fast instead of hanging on a full-screen one. That guard does not cover jj's diff editor (jj split/diffedit/resolve), which is a builtin TUI.",
       "RUSTC_WRAPPER": "sccache",
       "CARGO_BUILD_JOBS": "6 (derived from machine.buildCores — see modules/nixos/machine.nix)",
       "CLAUDE_CONFIG_DIR": "/home/mehti/.claude"
@@ -310,13 +310,6 @@
         "vi",
         "vim"
       ]
-    },
-    {
-      "name": "code",
-      "package": "vscode",
-      "category": "editor",
-      "purpose": "VS Code. Also the configured EDITOR (`code --wait`) for git and jj in interactive sessions.",
-      "notes": "Agent sessions override the editor variables to `false` (see machine.env.EDITOR), so an editor-opening command errors instead of blocking on a GUI window. jj's diff editor is separate and still agent-unsafe: avoid jj split/diffedit/resolve and any -i flag."
     },
     {
       "name": "claude",

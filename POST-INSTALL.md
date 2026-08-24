@@ -147,7 +147,7 @@ its directory.
 | **Boot** | systemd-boot, 10 generations, systemd in initrd, `quiet loglevel=3 nowatchdog`, `/tmp` on disk (never tmpfs) |
 | **Root filesystem** | Impermanent — `@root` wiped and re-snapshotted from `@root-blank` every boot, outgoing root kept 7 days in `old_roots/` |
 | **Persisted (system)** | `/etc/nixos`, NM connections + runtime, `/etc/ssh`, `/etc/machine-id`, `/var/log`, `/var/lib/{nixos,bluetooth,systemd,NetworkManager,fwupd,AccountsService}`, `/var/db/sudo` |
-| **Persisted (user)** | `Projects Documents Downloads Pictures Videos Music Desktop`, `.ssh`, `.gnupg`, `.claude`, `.vscode`, `.config`, `.local/{share,state}`, `.cargo`, `.cache/{sccache,nix,mesa_shader_cache,nvidia}` |
+| **Persisted (user)** | `Projects Documents Downloads Pictures Videos Music Desktop`, `.ssh`, `.gnupg`, `.claude`, `.config`, `.local/{share,state}`, `.cargo`, `.cache/{sccache,nix,mesa_shader_cache,nvidia}` |
 | **Desktop** | KDE Plasma 6 on Wayland, SDDM (Wayland), `hardware.graphics` + 32-bit |
 | **Keyboard** | xkb `se,ir`, caps→escape, alt+shift layout toggle; console `sv-latin1` |
 | **Locale** | `en_US.UTF-8`, `LC_TIME=sv_SE.UTF-8`, `Europe/Stockholm` |
@@ -158,9 +158,9 @@ its directory.
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
-| **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
-| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
-| **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=code --wait`, `CLAUDE_CONFIG_DIR` |
+| **Packages** | `brave-origin alacritty zellij claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
+| **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=nvim`, `CLAUDE_CONFIG_DIR` |
 
 ## Varies per machine — `hosts/<name>/`
 
@@ -190,7 +190,6 @@ Adding RAM means editing one number.
 | Project `.env` files | gone with the old disk — they are gitignored, so they exist on one disk only |
 | Commit `hosts/<name>/` | the installer stages it and stops |
 | Plasma look and feel | `.config` persisted; only power settings are declared (`modules/home/plasma.nix`), the rest is hand-set |
-| VS Code extensions | marketplace, once, on brand-new hardware |
 | Per-project devenv | `devenv.nix` + `direnv allow` |
 
 This describes what the config *declares*. Only the `nixos-machine` path has run
@@ -301,8 +300,9 @@ machine needs the block in `hosts/nixos-machine/default.nix`, bus IDs adjusted.
 **Pinning Neovim's plugins.** `nvim/` in this repo is LazyVim's config and is
 declared; the plugins it names are not. They clone into `~/.local/share/nvim/lazy`
 at first launch and `lazy-lock.json` is written into `~/.config/nvim`, writable
-rather than declared — which is what lets `:Lazy update` work at all, and is the
-same split the VS Code extensions use. The cost is that a *fresh* machine resolves
+rather than declared — which is what lets `:Lazy update` work at all. It is the
+split the VS Code extensions used before they were removed, kept because the
+reasoning outlived the editor. The cost is that a *fresh* machine resolves
 plugins at whatever is current rather than what this one runs. If that day matters
 more than in-editor updates do, copy `~/.config/nvim/lazy-lock.json` into `nvim/`
 and add one line beside the others in `xdg.configFile`.
@@ -327,6 +327,15 @@ tabs natively.
 
 Steam, OBS, any gaming stack, the CachyOS kernel, Firefox, Konsole, Ghostty,
 and system-wide Rust. Each was a decision, not an oversight.
+
+**VS Code was here and now is not.** Neovim running LazyVim replaced it, and the
+removal took more than a package line: `EDITOR` and jj's `ui.editor` both pointed
+at `code --wait`, three marketplace extensions were declared and symlinked into a
+writable `~/.vscode`, `.vscode` was a persisted path, and `programs.nix-ld` was
+justified in `users.nix` by the Claude Code extension's bundled binary. nix-ld
+stays — mason.nvim downloads prebuilt language servers with the same problem — but
+its comment now says so. `nixd` stays too, and `nvim/lua/plugins/nix.lua` is what
+kept it from becoming a server with no client.
 
 **`plasma-manager` was on this list and now is not.** It is installed, but
 scoped to powerdevil alone (`modules/home/plasma.nix`) with `overrideConfig`

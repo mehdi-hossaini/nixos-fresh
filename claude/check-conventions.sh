@@ -200,7 +200,7 @@ fi
 head_ "Editor guard"
 jj_ui_editor=$(jj config get ui.editor 2>/dev/null || true)
 case "$jj_ui_editor" in
-*--wait* | *code*) blocking_editor=yes ;;
+*--wait* | *code* | *vim* | *vi) blocking_editor=yes ;;
 *) blocking_editor=no ;;
 esac
 # the guard may come from managed settings (declared, in the repo) or from user

@@ -23,7 +23,6 @@
     # Alacritty has no tabs by design, so the multiplexer is not optional here —
     # without it you get one OS window per task.
     zellij
-    vscode
     # Notes. The vault is ordinary markdown on disk, so where it lives decides
     # whether it survives a reboot: put it under ~/Documents or ~/Projects,
     # which impermanence.nix persists. A vault in the home root does not.

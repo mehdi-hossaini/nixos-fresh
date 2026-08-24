@@ -144,10 +144,6 @@ in
     # .claude above — it keeps its own tree in the home root rather than under
     # .config, so without this entry every reboot means logging in again.
     ".codex"
-    # VS Code puts *extensions* here, not in ~/.config/Code — that half holds
-    # only settings and workspace state. Without this, every reboot is a full
-    # extension reinstall.
-    ".vscode"
     # Wholesale, deliberately: Plasma owns its own config and we declare only
     # the power settings (modules/home/plasma.nix) — everything else it writes
     # here is yours and unmanaged. ~/.config/jj rides along too.

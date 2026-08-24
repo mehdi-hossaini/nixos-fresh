@@ -18,57 +18,6 @@ let
   # One string, four styles. Change this to reface the terminal.
   terminalFont = "Geist Mono";
 
-  # VS Code extensions declared here rather than hand-installed. Only these; the
-  # five already in ~/.vscode/extensions stay hand-installed on purpose — see the
-  # home.file comment below for why that split exists and how it is kept.
-  #
-  # Every engine range was checked against the vscode here (1.133.0) before being
-  # pinned. An out-of-range extension installs and then silently never activates,
-  # which looks identical to the feature simply not working.
-  vscodeExtensions = map pkgs.vscode-utils.extensionFromVscodeMarketplace [
-    {
-      # vscode ships ~45 built-in grammars and TOML is not one of them, while
-      # this machine has ten .toml files (Cargo, devenv, treefmt).
-      # Engine ^1.90.0.
-      publisher = "tamasfe";
-      name = "even-better-toml";
-      version = "0.21.2";
-      sha256 = "sha256-IbjWavQoXu4x4hpEkvkhqzbf/NhZpn8RFdKTAnRlCAg=";
-    }
-    {
-      # Erlang is the other gap, and nine .erl files ride along with the Elixir
-      # work here. Engine ^1.52.0. Note it covers Erlang only — .erl .hrl .xrl
-      # .yrl .es .escript — and nothing of Elixir or Nix, which share its
-      # runtime and its reputation for being the same thing.
-      publisher = "pgourlain";
-      name = "erlang";
-      version = "1.1.4";
-      sha256 = "sha256-sRS+kE2H2oya2gd/GIVevdovmvyKxKUAQWKnWrgqoPo=";
-    }
-    {
-      # The grammar for the language this repo is written in, and the only
-      # installed extension that claims .nix — vscode has no built-in one. It was
-      # hand-installed, which made it the first thing a fresh machine would lack
-      # while being the thing most needed to fix that machine. Pairs with nixd
-      # from packages.nix: this is the editor client, that is the server.
-      # Engine >=1.105.0.
-      publisher = "jnoortheen";
-      name = "nix-ide";
-      version = "0.5.13";
-      sha256 = "sha256-0pMMnYFX+Ghs42Tvfcv9QqwhrEhCjIa7+6xJ51Fa0Dk=";
-    }
-  ];
-
-  # ~/.vscode/extensions/<publisher>.<name>-<version> -> the store copy. The
-  # derivations carry their own identity, so the paths are derived rather than
-  # written out three times and drifting.
-  vscodeExtensionLinks = pkgs.lib.listToAttrs (
-    map (e: {
-      name = ".vscode/extensions/${e.vscodeExtUniqueId}-${e.version}";
-      value.source = "${e}/share/vscode/extensions/${e.vscodeExtUniqueId}";
-    }) vscodeExtensions
-  );
-
   # Codex reads ~/.codex/AGENTS.md the way Claude reads ~/.claude/CLAUDE.md, and
   # the rules are the same rules — so the body here IS claude/CLAUDE.md, byte for
   # byte, rather than a second copy free to drift. Only a header is prepended, and
@@ -180,7 +129,10 @@ in
       ui = {
         # Bare `jj` shows the log rather than the help text.
         default-command = "log";
-        editor = "code --wait";
+        # Set explicitly rather than left to $EDITOR, so `jj describe` does not
+        # depend on which shell it was launched from. nvim blocks in place; the
+        # GUI window this used to open is what made a forgotten -m hang.
+        editor = "nvim";
       };
       # Everything else is left at jj 0.44's defaults on purpose — `git.colocate`
       # and `git.track-default-bookmark-on-clone` are already true, and the
@@ -582,7 +534,11 @@ in
   };
 
   home.sessionVariables = {
-    EDITOR = "code --wait";
+    # nvim, since VS Code is gone. It blocks in the terminal it was invoked
+    # from, so a forgotten `jj describe` -m waits rather than opening a window
+    # a headless session cannot see — and agent sessions still pin this to
+    # `false` through managed settings, which is the guard that actually holds.
+    EDITOR = "nvim";
     # Relocates .claude.json into ~/.claude, which is a persisted directory
     # (modules/nixos/impermanence.nix). Left unset, it lives loose in the home root
     # and does not survive a reboot. Verified against claude-code 2.1.228:
@@ -600,19 +556,7 @@ in
   # The rules half of settings.json — the editor guard and the nh hook — cannot live
   # here, because Claude Code must be able to write that file. It is declared as
   # managed settings instead; see modules/nixos/claude.nix.
-  # Some extensions declared, the rest deliberately not. The obvious route,
-  # vscode-with-extensions, does not add extensions — it repoints VS Code's
-  # --extensions-dir at a read-only store path (with-extensions.nix:75), so every
-  # extension NOT declared in nix stops loading. Taking it would have unloaded
-  # claude-code, foam, nix-ide, elixir-ls and excalidraw-editor, and frozen
-  # claude-code behind a hash bump per update.
-  #
-  # Symlinking extensions in one by one leaves the directory writable and leaves
-  # those five alone: still hand-installed, still auto-updating, still persisted
-  # by impermanence.nix. The split is the point, not a compromise — a watcher and
-  # two grammars are things this repo should reproduce on a fresh machine, while
-  # an editor's day-to-day extensions are state.
-  home.file = vscodeExtensionLinks // {
+  home.file = {
     ".claude/CLAUDE.md".source = ../../claude/CLAUDE.md;
     ".codex/AGENTS.md".source = codexAgentsMd;
     ".claude/check-conventions.sh" = {

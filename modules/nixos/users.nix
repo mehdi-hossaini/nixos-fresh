@@ -27,15 +27,14 @@ in
   };
   programs.fish.enable = true;
 
-  # The Claude Code VS Code extension ships its own prebuilt claude binary and
-  # resolves it only from its own resources/ directory — there is no setting or
-  # env var to point it at the nixpkgs claude-code on PATH, so the bundled one
-  # has to run. Being a generic-Linux ELF it looks for the loader at the FHS
-  # path /lib64/ld-linux-x86-64.so.2, where NixOS keeps stub-ld: a stub whose
-  # only job is to print "cannot run dynamically linked executables" and exit
-  # 127. nix-ld puts a real loader there instead. ldd on that binary resolves
-  # against glibc alone, so the default library set covers it; anything else
-  # prebuilt that needs more libs would list them in programs.nix-ld.libraries.
+  # This was here for the Claude Code VS Code extension's bundled binary. VS Code
+  # is gone, and the need is not: mason.nvim downloads prebuilt language servers
+  # for neovim and runs them from ~/.local/share/nvim/mason. Being generic-Linux
+  # ELFs they look for the loader at the FHS path /lib64/ld-linux-x86-64.so.2,
+  # where NixOS keeps stub-ld: a stub whose only job is to print "cannot run
+  # dynamically linked executables" and exit 127. nix-ld puts a real loader there
+  # instead. Servers needing more than glibc would list their libraries in
+  # programs.nix-ld.libraries.
   programs.nix-ld.enable = true;
 
   # mutableUsers = false and no root password means a missing hash file leaves
