@@ -32,17 +32,17 @@ LENSES=$(
   cat <<'EOF'
 total-function	partial operation — no answer for some inputs	(\.pop\(\)|\.shift\(\)|\.unwrap\(\)|\.expect\(|JSON\.parse\(|\bparseInt\(|\bNumber\(|\bint\(|\bfloat\(|strconv\.Ato|Integer\.parse|\.popitem\(|\.fetchone\()
 option-not-null	absence as a hole in the floor, not a box you must open	(\|\s*(null|undefined)\b|\breturn (null|nil|None)\b|\bis None\b|\?\s*:|Nullable<|= (None|nil|null)\b)
-errors-as-values	failure travelling invisibly instead of in the signature	(\bthrow new |\braise \b|\bpanic\(|panic!\(|\} catch|\bcatch \(|\bexcept [A-Z]|\brescue\b|if err != nil)
-types-are-contracts	the contract opted out of — a cast, an escape hatch, a suppression	(\bas any\b|:\s*any\b|@ts-(ignore|expect-error)|\bas unknown as\b|#\s*type:\s*ignore|:\s*Any\b|interface\{\}|\bunsafe\b|\(Object\)|@SuppressWarnings|\breflect\.|getattr\()
-make-illegal-states-unrepresentable	you know something the type does not	([A-Za-z_)\]]!\.|\bassert\b|assert!\(|\bassert_|Optional\.get\(\)|\bas!\s|!!)
+errors-as-values	failure travelling invisibly instead of in the signature	(\bthrow new |^\s*raise\b|\bpanic\(|panic!\(|\} catch|\bcatch \(|\bexcept [A-Z]|\brescue\b|if err != nil)
+types-are-contracts	the contract opted out of — a cast, an escape hatch, a suppression	(\bas any\b|:\s*any\b|@ts-(ignore|expect-error)|\bas unknown as\b|#\s*type:\s*ignore|:\s*Any\b|interface\{\}|\bunsafe\s*(\{|fn\b|impl\b)|\(Object\)|@SuppressWarnings|\breflect\.|getattr\()
+make-illegal-states-unrepresentable	you know something the type does not	([A-Za-z_)\]]!\.|^\s*assert\b|assert!\(|\bassert_|Optional\.get\(\)|\bas!\s|!!)
 immutability	in-place mutation of a value someone else may hold	(\.push\(|\.append\(|\.splice\(|\.extend\(|Object\.assign\(|\.sort\(\)|\.sort_by|&mut |\bmut [a-z_]|\bdelete [a-z_$][A-Za-z0-9_$]*[.\[]|\.insert\(|\.setdefault\()
-side-effect	an effect performed mid-computation instead of described	(console\.(log|error|warn)|System\.out\.|\bprintln!?\(|\bprint\(|\bputs \b|fmt\.Print|Date\.now\(\)|time\.Now\(\)|datetime\.now\(|Math\.random\(\)|\brandom\.|rand::|process\.env\.|os\.environ|std::env::var|System\.getenv)
+side-effect	an effect performed mid-computation instead of described	(console\.(log|error|warn)|System\.out\.|\bprintln!?\(|\bprint\(|^\s*puts\b|fmt\.Print|Date\.now\(\)|time\.Now\(\)|datetime\.now\(|Math\.random\(\)|\brandom\.|rand::|process\.env\.|os\.environ|std::env::var|System\.getenv)
 local-reasoning	module-level mutable state — one page is no longer enough	(^(export )?let |^(export )?var |^\s*static mut |^\s*global [a-z_]|lazy_static!|^[A-Z][A-Z_]+ = )
 EOF
 )
 
 # Build artefacts and vendored code, which nobody is reviewing.
-PRUNE_DIRS="fp-review node_modules dist build target vendor .venv venv .git __pycache__ .next coverage"
+PRUNE_DIRS="fp-review node_modules dist build target vendor .venv venv .git .jj __pycache__ .next coverage"
 # Test files are excluded by DEFAULT, and this is the single most important
 # calibration in the script. Assertions, thrown errors and mutation are correct
 # usage in a test — including tests roughly doubles the assertion lens on a

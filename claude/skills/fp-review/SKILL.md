@@ -135,11 +135,23 @@ The lenses are universal; their *density* is not. Read the counts with this:
 - **A lens firing zero is information, not a bug.** `--self-test` is how you tell a
   quiet lens from a broken one: it asserts every regex still matches its fixture
   line in at least three of five languages.
-- **Patterns must anchor to syntax, not words.** Two false positives were found
-  this way and fixed: `delete [a-z]` matched an English sentence in a comment, and
-  `global [a-z_]` matched the phrase "the global half comes out". Anything that can
-  occur in prose needs a syntactic anchor. If you add a lens, check it against a
-  comment-heavy file before trusting it.
+- **Patterns must anchor to syntax, not words.** Six false positives have been found
+  this way and fixed. `delete [a-z]` matched an English sentence in a comment;
+  `global [a-z_]` matched "the global half comes out". Then a comment-dense Nix tree
+  returned 23 hits of which 21 were prose, and cost four more: `\braise \b` and
+  `\bputs \b` — Ruby's spellings, and both ordinary English verbs — matched "do not
+  raise it by hand" and "puts swap on the main disk"; `\bassert\b` matched "assert
+  its contrast figures"; and `\bunsafe\b` matched the hyphenated adjective in
+  "agent-unsafe", because `\b` breaks at a hyphen. The first three are now anchored
+  to statement position (`^\s*`), the fourth to what Rust actually writes
+  (`unsafe {` / `unsafe fn` / `unsafe impl`). Anything that can occur in prose needs
+  a syntactic anchor, and a language whose keywords are English verbs needs one most.
+  If you add a lens, check it against a comment-heavy file before trusting it.
+- **`.jj` is pruned alongside `.git`.** A colocated jj repo keeps an operation log of
+  plain text under `.jj/repo/op_store/`, commit messages included — so a tree that
+  discusses the lenses matches itself through its own history. ripgrep hides that by
+  honouring `.gitignore`; GNU grep does not, which is how it surfaced: the two
+  engines disagreed, 2 sites against 4.
 - **The two engines differ slightly.** POSIX bracket expressions treat backslash as
   literal, so `[A-Za-z_)\]]` means different sets to ripgrep and to GNU grep, and
   one lens loses one language under the fallback. Counts are comparable between
