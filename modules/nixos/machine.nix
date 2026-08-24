@@ -87,4 +87,63 @@ in
       '';
     };
   };
+
+  # Three facts the options above state in prose and nothing has been checking.
+  # Each one fails today at the worst possible moment — a thrashing build, a
+  # boot that hangs after switch-root, a login that is refused on a machine you
+  # cannot log into to fix it. An assertion moves all three to `nh os build`,
+  # which costs seconds and needs no hardware.
+  config.assertions = [
+    {
+      # buildJobs MULTIPLIES with buildCores. The defaults hold the product at
+      # `threads` by construction (integer division), so this only ever fires
+      # for a host that overrides one of them — which is exactly when the
+      # reasoning in the descriptions above has been lost. Oversubscribing is
+      # not a slow build, it is the OOM that memory.nix exists to survive.
+      assertion = cfg.buildJobs * cfg.buildCores <= cfg.threads;
+      message = ''
+        machine.buildJobs (${toString cfg.buildJobs}) x machine.buildCores (${toString cfg.buildCores})
+        = ${
+          toString (cfg.buildJobs * cfg.buildCores)
+        }, which oversubscribes machine.threads (${toString cfg.threads}).
+        Peak build concurrency is the product, not either factor. Lower one of
+        them, or raise machine.threads if this host really has that many.
+      '';
+    }
+    {
+      # hasDataDisk gates the crypttab entry in impermanence.nix, which names
+      # disk-data-cryptdata by partlabel. Disagreement between the two is
+      # invisible until boot: true with no such partition hangs waiting for a
+      # device that does not exist, false with one leaves /data unmounted and
+      # the disk silently unused.
+      assertion =
+        cfg.hasDataDisk == (
+          (config.disko.devices.disk ? data)
+          && (config.disko.devices.disk.data.content.partitions ? cryptdata)
+        );
+      message = ''
+        machine.hasDataDisk is ${lib.boolToString cfg.hasDataDisk}, but this host's disko layout
+        ${
+          if cfg.hasDataDisk then
+            "has no disk `data` with a `cryptdata` partition"
+          else
+            "does declare disk `data` with a `cryptdata` partition"
+        }.
+        These two describe the same disk and must agree — set the option to
+        ${lib.boolToString (!cfg.hasDataDisk)}, or use the matching layout from templates/host/.
+      '';
+    }
+    {
+      # Law 5 and law 7 at once: the password hash and the data-disk keyfile
+      # live here. Anywhere outside /persistent is erased at the next boot,
+      # which locks the user out of the machine needed to fix it, and anything
+      # in the Nix store would be world-readable besides.
+      assertion = lib.hasPrefix "/persistent/" cfg.secretsDir;
+      message = ''
+        machine.secretsDir is "${cfg.secretsDir}", which is not under /persistent/.
+        Impermanence erases everything else at boot, taking the user's password
+        hash with it. Keep it on the encrypted root under /persistent/.
+      '';
+    }
+  ];
 }
