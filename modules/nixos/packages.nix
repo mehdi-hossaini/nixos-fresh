@@ -116,5 +116,10 @@
     fd
     jq
     btop
+
+    # The one-off half of law 1, in one step: `, <cmd>` resolves the command
+    # through the same nix-index database nix-locate reads, fetches the package
+    # and runs it, leaving nothing behind. No second database to build.
+    comma
   ];
 }

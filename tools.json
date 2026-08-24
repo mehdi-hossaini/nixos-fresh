@@ -143,6 +143,16 @@
       "notes": "The database is prebuilt and declared (nix-index-database, wired in modules/nixos/home-manager.nix). Never run `nix-index` to build one: it writes to ~/.cache/nix-index, which impermanence does not persist, so the work is lost at reboot and shadows the declared copy until then."
     },
     {
+      "name": "comma",
+      "package": "comma",
+      "commands": [
+        ",",
+        "comma"
+      ],
+      "category": "nix",
+      "purpose": "Run a program without installing it: `, <cmd>` resolves it through the same nix-index database nix-locate reads, fetches the package and runs it. The one-off route of law 1 collapsed into one step; leaves nothing behind."
+    },
+    {
       "name": "devenv",
       "package": "devenv",
       "category": "dev-env",

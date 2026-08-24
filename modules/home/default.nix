@@ -459,10 +459,53 @@ in
   # attribute names — the lookup step that "a missing tool is a decision" asks for.
   # The database comes prebuilt from nix-index-database (see home-manager.nix);
   # nothing indexes anything on this machine.
+  # Integration off on purpose. The handler that module emits prints `nix-env
+  # -iA nixpkgs.<attr>` — imperative installation, the one thing law 1 forbids.
+  # It picks that branch because ~/.nix-profile/manifest.json does not exist on
+  # this machine, so the legacy advice is all it can offer. A missing command is
+  # the moment you are most likely to run whatever the terminal just suggested,
+  # which makes wrong advice there more expensive than no advice at all.
   programs.nix-index = {
     enable = true;
-    enableFishIntegration = true;
+    enableFishIntegration = false;
   };
+
+  # The replacement: same nix-locate lookup, same trigger, routed by law 1
+  # instead. fish 4 calls fish_command_not_found directly — the module's
+  # deprecated `--on-event` form is the other reason the integration above is
+  # off, since both would fire and print twice.
+  #
+  # home-manager wraps interactiveShellInit in `status is-interactive`, so this
+  # never loads in an agent or script shell. That matters: the nix-index script
+  # bails to a bare message when stdout is not a TTY, and this keeps that shape.
+  programs.fish.interactiveShellInit = ''
+    function fish_command_not_found
+        set -l cmd $argv[1]
+        if not command -q nix-locate
+            echo "$cmd: command not found" >&2
+            return 127
+        end
+        set -l attrs (nix-locate --minimal --no-group --type x --type s \
+            --whole-name --at-root "/bin/$cmd" | string replace -r "\.out\$" "" | head -5)
+        if test (count $attrs) -eq 0
+            echo "$cmd: command not found, and no nixpkgs package ships it" >&2
+            return 127
+        end
+        echo "$cmd is not installed. Law 2: that is a decision, so pick one." >&2
+        echo >&2
+        echo "  once, leaving nothing behind:" >&2
+        for a in $attrs
+            echo "      nix shell nixpkgs#$a -c $cmd ..." >&2
+        end
+        echo "      , $cmd ...                    same lookup, fetches and runs" >&2
+        echo >&2
+        echo "  declared, so it survives a reboot:" >&2
+        echo "      devenv.nix                    this project only" >&2
+        echo "      modules/nixos/packages.nix    this machine, system-wide" >&2
+        echo "      modules/home/default.nix      this machine, your user" >&2
+        return 127
+    end
+  '';
 
   programs.bat.enable = true;
 
