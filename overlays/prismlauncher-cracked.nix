@@ -50,6 +50,23 @@ in
       final.libxtst
       final.freetype
       final.fontconfig.lib
+      # waylandcraft ships its compositor as a native Rust library inside the
+      # mod jar, and that .so carries a hard DT_NEEDED on libxkbcommon.so.0.
+      # The wrapper's stock library set covers GLFW's needs but not that one,
+      # and there is no /usr/lib to fall back on, so without this entry the mod
+      # fails at load with UnsatisfiedLinkError rather than anything readable.
+      final.libxkbcommon
+    ];
+    # xwayland-satellite is executed by bare name, not by path, so it has to be
+    # on the game process's PATH — the wrapper's is a prefix over the session's,
+    # and a Prism instance inherits it. Absent, waylandcraft still starts but
+    # every X11 application silently refuses to appear in a window.
+    #
+    # libxkbcommon is repeated here for `xkbcli`, which lives in its `out`
+    # alongside the library; waylandcraft's README asks for it.
+    additionalPrograms = [
+      final.xwayland-satellite
+      final.libxkbcommon
     ];
   };
 }
