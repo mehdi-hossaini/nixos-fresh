@@ -325,7 +325,14 @@ binds `<C-h>` and `<C-s>` while vim itself wants `<C-o>`, `<C-n>`, `<C-p>` and
 
 | `Alt+t` | new tab |
 | `Alt+Left` / `Alt+Right` | previous / next tab |
-| `Alt+Space` | unlock for everything else — then `t` tabs, `p` panes, `n` resize, `o` session, `s` scroll; `Alt+Space` again to relock |
+| `F12` | unlock for everything else — then `t` tabs, `p` panes, `n` resize, `o` session, `s` scroll; `F12` again to relock |
+
+The unlock key is F12 rather than something more natural because KDE gets the
+keyboard first. Alt+Space is KRunner's and never reaches the terminal, and so is
+Alt+`` ` ``. Checking `kglobalshortcutsrc` will not tell you that — it holds only
+shortcuts you have customised. Ask the live registry instead: `qdbus
+org.kde.kglobalaccel` lists the components, and `allShortcutInfos` on each returns
+the Qt key codes actually held (141 of them here).
 
 If tabs ever feel like they need less than one keypress, the structural answer is
 kitty, whose native tabs sit on `Ctrl+Shift+*` where no terminal program looks.

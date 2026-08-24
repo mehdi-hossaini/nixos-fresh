@@ -20,9 +20,22 @@ keybinds {
         bind "Alt Left" { GoToPreviousTab; }
         bind "Alt Right" { GoToNextTab; }
 
-        // Everything else zellij does, on demand: Alt+Space, then t/p/n/o/s for
-        // tab, pane, resize, session and scroll modes.
-        bind "Alt Space" { SwitchToMode "normal"; }
+        // Everything else zellij does, on demand: F12, then t/p/n/o/s for tab,
+        // pane, resize, session and scroll modes.
+        //
+        // Not Alt+Space, which was tried and is KRunner's: KDE grabs it at the
+        // compositor, so it never reaches the terminal at all. kglobalshortcutsrc
+        // is the wrong place to check for that — it records only shortcuts you
+        // have *customised*, so a default reads as absent. The registry is the
+        // real answer, and it can be asked:
+        //
+        //   qdbus --literal org.kde.kglobalaccel /component/<c> \
+        //     org.kde.kglobalaccel.Component.allShortcutInfos
+        //
+        // over each /component/ listed by `qdbus org.kde.kglobalaccel`. Keys come
+        // back as Qt codes (Alt = 0x08000000, F1 = 0x01000030), and 141 of them
+        // are spoken for on this machine — Alt+` among them.
+        bind "F12" { SwitchToMode "normal"; }
 
         // zellij binds Ctrl+g here by default. Unbound so the claim above holds for
         // *every* Ctrl chord — `zellij action switch-mode normal`, run from anywhere,
@@ -32,6 +45,6 @@ keybinds {
     normal {
         // Symmetric exit. Esc and Enter only return to normal from a submode, so
         // without this the way back to locked would be the Ctrl+g just unbound.
-        bind "Alt Space" { SwitchToMode "locked"; }
+        bind "F12" { SwitchToMode "locked"; }
     }
 }

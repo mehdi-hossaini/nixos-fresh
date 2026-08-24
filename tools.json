@@ -284,7 +284,7 @@
       "name": "zellij",
       "package": "zellij",
       "category": "terminal",
-      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks, and Alacritty's shell (modules/home/default.nix), so a terminal window is already inside a session. Starts in locked mode by design (zellij/config.kdl): it forwards every key so neovim keeps its Ctrl chords, holding only Alt+t for a new tab, Alt+Left/Right to switch, and Alt+Space to reach the rest. Can be driven non-interactively via `zellij action` / `zellij run`.",
+      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks, and Alacritty's shell (modules/home/default.nix), so a terminal window is already inside a session. Starts in locked mode by design (zellij/config.kdl): it forwards every key so neovim keeps its Ctrl chords, holding only Alt+t for a new tab, Alt+Left/Right to switch, and F12 to reach the rest (not Alt+Space, which is KRunner's). Can be driven non-interactively via `zellij action` / `zellij run`.",
       "agent_unsafe": [
         "zellij attach"
       ]
