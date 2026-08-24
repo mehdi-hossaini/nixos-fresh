@@ -507,6 +507,53 @@ in
     end
   '';
 
+  # LazyVim, split the way the VS Code extensions above are split: the config is
+  # declared, the plugin churn is not.
+  #
+  # lua/config and lua/plugins are symlinked as whole directories, so a new file
+  # dropped into either is picked up without a second declaration to remember —
+  # and ~/.config/nvim itself stays a real, writable directory. That last part is
+  # load-bearing: lazy.nvim writes lazy-lock.json into the config root, which a
+  # store symlink would make impossible.
+  #
+  # The plugins themselves clone into ~/.local/share/nvim/lazy at first launch.
+  # That is state, and impermanence.nix persists .local/share, so it survives a
+  # reboot without being declared. The cost, stated plainly: lazy-lock.json is
+  # writable rather than declared, so a *fresh* machine resolves plugins at
+  # whatever is current instead of what this one pinned. Copy the lockfile into
+  # nvim/ and add a line here if that day matters more than `:Lazy update` does.
+  xdg.configFile = {
+    "nvim/init.lua".source = ../../nvim/init.lua;
+    "nvim/stylua.toml".source = ../../nvim/stylua.toml;
+    "nvim/lua/config".source = ../../nvim/lua/config;
+    "nvim/lua/plugins".source = ../../nvim/lua/plugins;
+  };
+
+  # gcc, gnumake, nodejs and unzip are all in tools.json's not_installed list,
+  # and this does not contradict that. The reason each is absent is that a system
+  # copy shadows a project's pinned toolchain; extraPackages is `--suffix PATH` on
+  # neovim's own wrapper (home-manager neovim/default.nix:508), so these exist for
+  # nvim's subprocesses and nowhere else. A devenv shell still wins in a terminal.
+  #
+  # What needs them: nvim-treesitter compiles parsers with a C compiler, and
+  # mason.nvim unpacks and runs LSP servers, many of them npm packages. Mason's
+  # prebuilt binaries run at all here because programs.nix-ld.enable is true.
+  #
+  # No lazygit, though LazyVim binds <leader>gg to it: local history here is jj,
+  # and a git TUI pointed at a colocated repo is a worse answer than no answer.
+  programs.neovim = {
+    enable = true;
+    viAlias = true;
+    vimAlias = true;
+    extraPackages = with pkgs; [
+      gcc
+      gnumake
+      nodejs
+      unzip
+      tree-sitter
+    ];
+  };
+
   programs.bat.enable = true;
 
   # `ls` was still coreutils. eza sat in packages.nix for eleven days with no

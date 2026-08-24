@@ -159,7 +159,7 @@ its directory.
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
 | **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
-| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt` |
+| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=code --wait`, `CLAUDE_CONFIG_DIR` |
 
 ## Varies per machine — `hosts/<name>/`
@@ -297,6 +297,20 @@ worth more than every tuning knob in `modules/` combined. After it lands, edit
 block, which is correct and complete for Intel or AMD graphics —
 `modules/nixos/desktop.nix` already enables `hardware.graphics`. Only an NVIDIA
 machine needs the block in `hosts/nixos-machine/default.nix`, bus IDs adjusted.
+
+**Pinning Neovim's plugins.** `nvim/` in this repo is LazyVim's config and is
+declared; the plugins it names are not. They clone into `~/.local/share/nvim/lazy`
+at first launch and `lazy-lock.json` is written into `~/.config/nvim`, writable
+rather than declared — which is what lets `:Lazy update` work at all, and is the
+same split the VS Code extensions use. The cost is that a *fresh* machine resolves
+plugins at whatever is current rather than what this one runs. If that day matters
+more than in-editor updates do, copy `~/.config/nvim/lazy-lock.json` into `nvim/`
+and add one line beside the others in `xdg.configFile`.
+
+Neovim's toolchain is deliberately invisible outside it. `gcc`, `nodejs`, `unzip`
+and `tree-sitter` are on the neovim wrapper's PATH and nowhere else, so treesitter
+can compile its 27 parsers and mason can unpack a language server without a system
+compiler existing to shadow a project's pinned one.
 
 **Alacritty has no tabs — so it opens into zellij instead.** `terminal.shell` in
 `modules/home/default.nix` makes zellij the shell, so a window arrives already

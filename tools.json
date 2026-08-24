@@ -296,6 +296,22 @@
       "purpose": "GPU terminal emulator. GUI."
     },
     {
+      "name": "neovim",
+      "package": "neovim",
+      "commands": [
+        "nvim",
+        "vi",
+        "vim"
+      ],
+      "category": "editor",
+      "purpose": "LazyVim on Neovim. The config is declared in /etc/nixos/nvim and symlinked into ~/.config/nvim; the plugins are runtime state under ~/.local/share/nvim/lazy, persisted but not declared. Its toolchain (gcc, nodejs, unzip, tree-sitter) is on neovim's wrapper PATH only and does not reach a terminal. Interactive — do not launch from an agent shell.",
+      "agent_unsafe": [
+        "nvim",
+        "vi",
+        "vim"
+      ]
+    },
+    {
       "name": "code",
       "package": "vscode",
       "category": "editor",
