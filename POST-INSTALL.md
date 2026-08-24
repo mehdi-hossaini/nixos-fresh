@@ -230,6 +230,35 @@ Commit the new `hosts/<name>/` afterwards and the machine is reproducible.
 | Check the dGPU is asleep | `cat /sys/bus/pci/devices/0000:01:00.0/power/runtime_status` |
 | Format | `nixfmt` — everything but `hardware-configuration.nix`, which is generated |
 
+# Waylandcraft
+
+A Wayland compositor that runs inside Minecraft, so a terminal or a browser is a
+window you place in the world. The system half is declared:
+`overlays/prismlauncher-cracked.nix` puts `libxkbcommon` on Prism's
+`LD_LIBRARY_PATH` (the mod's native library has a hard `DT_NEEDED` on it, and
+there is no `/usr/lib` here to fall back on) and `xwayland-satellite` on its
+PATH, which the mod execs by bare name to serve X11 clients.
+
+The instance half cannot be declared without fighting Prism, which owns that
+directory and rewrites it constantly — saves, `options.txt`, downloaded assets,
+per-instance Java. So the mod *set* is pinned here and the mutable rest is not:
+
+```sh
+prismlauncher      # Add Instance -> Import -> minecraft/waylandcraft.mrpack
+```
+
+The pack pins Minecraft 26.1.2 and Fabric 0.19.3 because waylandcraft declares
+`"minecraft": "~26.1.2"` and Fabric refuses to load it on anything else — this
+is worth checking against the mod's current release before assuming the pin is
+still right. It carries `waylandcraft/settings.json` as an override so the
+in-game terminal is `alacritty` rather than unset.
+
+Keys once in game: `V` app launcher, `B` window manager, `ALT+Q` to capture the
+keyboard *including* `ESC`, which plain `G` swallows. A Chromium browser already
+running on the desktop will hand the launch off to itself and open on KDE
+instead of in the world — quit it first, that is Chromium's singleton lock and
+not the mod.
+
 # Things you will want to change
 
 **Persisted paths.** Anything not in `environment.persistence` in
