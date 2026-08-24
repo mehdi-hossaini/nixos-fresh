@@ -158,7 +158,7 @@ its directory.
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
-| **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Packages** | `brave-origin alacritty zellij vscode claude-code git gh jujutsu devenv sccache ast-grep shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq btop comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
 | **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `code --wait`), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt` |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=code --wait`, `CLAUDE_CONFIG_DIR` |
 
@@ -229,6 +229,9 @@ Commit the new `hosts/<name>/` afterwards and the machine is reproducible.
 | Run something on the dGPU | `nvidia-offload <cmd>` (nixos-machine only) |
 | Check the dGPU is asleep | `cat /sys/bus/pci/devices/0000:01:00.0/power/runtime_status` |
 | Format | `nixfmt` — everything but `hardware-configuration.nix`, which is generated |
+| Which package ships a binary | `nix-locate bin/<name>` |
+| Run something not installed | `, <cmd>` — comma resolves it through the same index and runs it, leaving nothing behind |
+| Typed a command that is not there | the shell answers with the three routes, per law 1; it never suggests installing into a profile |
 
 # Waylandcraft
 
@@ -295,8 +298,16 @@ block, which is correct and complete for Intel or AMD graphics —
 `modules/nixos/desktop.nix` already enables `hardware.graphics`. Only an NVIDIA
 machine needs the block in `hosts/nixos-machine/default.nix`, bus IDs adjusted.
 
-**Alacritty has no tabs.** If that grates, `programs.alacritty` → `programs.kitty`
-in `modules/home/default.nix` is a two-line change.
+**Alacritty has no tabs — so it opens into zellij instead.** `terminal.shell` in
+`modules/home/default.nix` makes zellij the shell, so a window arrives already
+inside a multiplexer: `Ctrl+t n` for a new tab, `Ctrl+p` for panes. Bare, with no
+`attach`, so two windows are two independent sessions rather than two views of
+one. `alacritty -e <cmd>` still bypasses it when a raw shell is wanted.
+
+zellij was installed for exactly this job on day one and wired to nothing for
+eleven days. If the multiplexer itself grates rather than the missing tabs,
+`programs.alacritty` → `programs.kitty` is still a two-line change, and kitty has
+tabs natively.
 
 # Not installed, on purpose
 
@@ -316,3 +327,27 @@ was `config init`. Project secrets go in gitignored `.env` files loaded by
 direnv's `dotenv_if_exists`, which is what the one devenv project actually does.
 Note that `devenv` vendors its own `secretspec` binary, so the command is still
 on PATH — removing the package only stopped declaring a second, shadowed copy.
+
+# Declared is not the same as used
+
+zellij sat on `PATH` for eleven days without running once. It was added in a
+batch commit, given a purpose line in `tools.json` describing it as "the tabs
+Alacritty deliberately lacks", and then wired to nothing — its config file was
+born on first use, eleven days after the package landed.
+
+Measured across this machine's own history — 10,354 commands from agent
+transcripts, 72 from shell history — the same held elsewhere: `ast-grep`, `btop`,
+`yq` and `sticky` have almost no invocations between them. `eza` had zero, while
+`ls` had 599, because nothing ever aliased one to the other.
+
+The tools that stuck have one thing in common, and it is not quality: every one
+of them is invoked by something other than memory. `nixfmt`, `deadnix`, `statix`,
+`shellcheck`, `shfmt` and `gitleaks` run inside `nix flake check`; `sccache`
+through `RUSTC_WRAPPER`; `direnv` from a fish hook; `nix-index` behind
+`nix-locate` and the missing-command handler; `moreutils` as `sponge`; `fzf` from
+a key binding.
+
+So the question before adding a tool here is not whether it is good, but what
+will call it. `eza` has an answer now (it is aliased over `ls`, `ll`, `la`, `lt`).
+`comma` has one (the missing-command prompt names it). A bare package line does
+not, and four of them are still sitting in this config as proof.
