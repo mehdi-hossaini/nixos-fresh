@@ -158,8 +158,8 @@ its directory.
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
-| **Packages** | `brave-origin alacritty zellij claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma` + nix-ld. `jjui eza bat fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
-| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), bat, fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
+| **Packages** | `brave-origin alacritty zellij claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma` + nix-ld. `jjui eza fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=nvim`, `CLAUDE_CONFIG_DIR` |
 
 ## Varies per machine — `hosts/<name>/`
@@ -346,6 +346,12 @@ tabs natively.
 
 Steam, OBS, any gaming stack, the CachyOS kernel, Firefox, Konsole, Ghostty,
 and system-wide Rust. Each was a decision, not an oversight.
+
+**bat went the same way, one audit later.** It was the last tool left in that
+category: enabled, configured, and called by nothing — no `PAGER`, no `MANPAGER`,
+no fzf preview ever named it, so its only trace on disk was a syntax cache built
+by home-manager activation rather than by use. Unlike yq there is nothing to
+disambiguate; only `bat.out` ships `/bin/bat`, so `, bat` is exactly the tool.
 
 **ast-grep, btop and sticky were here and now are not.** All three were declared
 and never reached for — the shape the closing section describes. ast-grep had zero

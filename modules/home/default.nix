@@ -513,8 +513,6 @@ in
     ];
   };
 
-  programs.bat.enable = true;
-
   # `ls` was still coreutils. eza sat in packages.nix for eleven days with no
   # alias, so nothing ever reached for it — the same failure zellij had, and it
   # is visible in this machine's own history: `ls` 599 times, `eza` zero. The

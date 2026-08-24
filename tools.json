@@ -244,12 +244,6 @@
       "notes": "This config repo is public — scan before committing anything that touches identity or credentials."
     },
     {
-      "name": "bat",
-      "package": "bat",
-      "category": "cli",
-      "purpose": "Pager/cat with syntax highlighting. Use `bat -pp` for plain, non-paged output in scripts."
-    },
-    {
       "name": "eza",
       "package": "eza",
       "category": "cli",
@@ -428,6 +422,12 @@
         "sticky"
       ],
       "workaround": "`, sticky`. Dropped 2026-08-24: its notes.json held an empty list, obsidian does the same job and is actually used, and it pulled mate-panel in behind Mint's xapp for +188 MiB. `xpad` is the +5 MiB equivalent if a floating pad is ever wanted again."
+    },
+    {
+      "names": [
+        "bat"
+      ],
+      "workaround": "`, bat` — only bat.out ships /bin/bat, so there is no ambiguity to resolve the way there is for yq. Dropped 2026-08-24 after 0 invocations in 10,591 recorded commands: it was enabled but nothing ever called it, since no PAGER, MANPAGER or fzf preview named it. `less` is the pager and `nvim` opens what wants highlighting."
     }
   ],
   "conventions": [
