@@ -239,8 +239,9 @@ For a tool needed once, and nowhere else: `nix shell nixpkgs#<pkg> -c <cmd>` —
 leaves nothing behind.
 
 Law 1 in practice: system packages go in `modules/nixos/packages.nix`, user ones in
-`modules/home/default.nix`, then `nh os switch /etc/nixos` as the user — `nh` refuses
-to run as root.
+`modules/home/default.nix`, then a clean `nh os build /etc/nixos` and the switch is
+handed over (law 3) — the user runs `nh os switch` themselves, as the user, since
+`nh` refuses to run as root.
 
 **Editing needs no sudo; activating does.** `/etc/nixos` is user-owned, so change and
 `nh os build /etc/nixos` freely — the build proves the config evaluates and prints the
