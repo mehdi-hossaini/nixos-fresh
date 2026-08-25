@@ -173,8 +173,10 @@ The model, which is what makes the command map read strangely at first:
 window. That guard does not reach the **diff** editor: bare `jj split`, `jj diffedit`,
 `jj resolve`, and any `-i` / `--interactive` / `--editor` flag open jj's builtin TUI,
 which an agent shell cannot drive. Stay away from those. `jj split <paths>` is the
-exception — filesets select non-interactively and no editor opens. Resolve conflicts by
-editing the marked files directly, then `jj squash` or `jj new`.
+exception — filesets select non-interactively and no editor opens. Resolve conflicts
+with `nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` first — it auto-merges
+what the syntax allows and exits 1 when real conflicts remain — then edit the still-
+marked files directly and `jj squash` or `jj new`.
 
 **`nix flake check` gates every commit in `/etc/nixos`.** It runs nixfmt, deadnix,
 shellcheck and shfmt over the tree. jj has no hook support and bypasses `.git/hooks`, so
