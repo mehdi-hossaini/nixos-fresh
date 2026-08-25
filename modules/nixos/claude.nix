@@ -97,6 +97,43 @@ let
     spillPaginationGuard
     ;
 
+  # ── the notification hook ───────────────────────────────────────────────────
+  # Not in agent-guards.nix, and not shared with Codex: this is neither a guard
+  # nor cross-agent. It denies nothing, escalates nothing and cannot be wrong in
+  # a way that costs anything — it is the one hook here that only reports. Codex
+  # has its own `notify` key in config.toml and would not take this shape anyway.
+  #
+  # What it buys: a session in another zellij tab, or behind a browser window,
+  # stops being invisible when it blocks. Claude Code already emits the event —
+  # `notification_type` distinguishes an agent that finished from one waiting on
+  # an answer — and Plasma 6 already runs a notification daemon on the session
+  # bus. The only missing piece was notify-send, and it comes from the store
+  # here rather than from PATH, so this cannot silently stop working if
+  # libnotify is never added to packages.nix.
+  #
+  # The urgency split is the point rather than a flourish. Plasma auto-dismisses
+  # a normal notification after a few seconds, which is fine for "this finished"
+  # and useless for "this is blocked on you" — the second is precisely the one
+  # you are away from the screen for. critical stays on screen until dismissed.
+  notifySend = "${pkgs.libnotify}/bin/notify-send";
+  notifyDesktop = pkgs.writeShellScript "claude-notify-desktop" ''
+    set -u
+    payload=$(cat)
+    field() { ${jq} -r "$1" <<<"$payload"; }
+
+    # The working directory names the session. With several agents running it is
+    # the only thing in the payload that says WHICH one is asking.
+    title=$(field '(.cwd // "") | split("/") | last | select(. != null and . != "") // "Claude Code"')
+    body=$(field '.notification_content // "Claude Code needs you."')
+
+    case $(field '.notification_type // ""') in
+      permission_prompt | agent_needs_input | idle_prompt | elicitation_dialog) urgency=critical ;;
+      *) urgency=normal ;;
+    esac
+
+    exec ${notifySend} -a "Claude Code" -u "$urgency" "$title" "$body"
+  '';
+
   mkHook =
     {
       if_,
@@ -214,6 +251,23 @@ let
               command = "${sessionStartCheck}";
               timeout = 30;
               statusMessage = "Checking machine conventions";
+            }
+          ];
+        }
+      ];
+
+      # No matcher: Notification does not take one — it fires on every
+      # notification Claude Code raises, which is the whole point. No
+      # statusMessage either, unlike every hook above: those gate something and
+      # the spinner says why the turn paused, whereas this one posts a popup and
+      # returns. A spinner for that would be louder than the thing it announces.
+      Notification = [
+        {
+          hooks = [
+            {
+              type = "command";
+              command = "${notifyDesktop}";
+              timeout = 10;
             }
           ];
         }
