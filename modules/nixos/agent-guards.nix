@@ -34,6 +34,26 @@ rec {
       escalate "the hook payload carried no cwd, so this guard cannot tell whether its rule applies here. Asking rather than assuming."
     cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end') ||
       escalate "guard could not read the command out of the hook payload."
+
+    # One command in, one command per line out. Every guard that judges a command
+    # judges it segment by segment, so `jj log && jj split` is caught on its second
+    # half instead of sliding past — Claude Code splits compound commands itself
+    # before applying permissions.deny, and this is the same job done where the
+    # payload lands.
+    #
+    # It lives here, once, because it did not: `requires` below and codex.nix's
+    # denyGuard each carried their own copy, and the copies were the parser — the
+    # part that decides whether a deny fires at all. The bug that cost the most is
+    # worth keeping written down, since it is the one a rewrite would reintroduce:
+    # `tr` leaves a TRAILING space on every segment but the last, so trimming only
+    # the leading side made `jj split && jj log` produce "jj split " and an exact
+    # pattern never matched it. The deny held for `jj log && jj split` and not for
+    # the reverse, which is the ordering that happened to get tested. Trim both
+    # ends. Empty segments are dropped so a caller never has to check for them.
+    segments() {
+      printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n' |
+        sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
+    }
   '';
 
   # An `if` filter is a precondition, and a precondition you do not check is one you
@@ -48,27 +68,21 @@ rec {
   # the input inside the function rather than assuming it outside is the same fix as
   # the totality one above, one level up.
   requires = pattern: ''
-    # Anchored to the start of a SEGMENT, not a substring of the whole command.
-    # Unanchored, merely NAMING a guarded phrase triggered the guard: under Codex,
-    # which has no per-hook `if` filter to narrow the input first, an `rg` for one
-    # of these phrases in a file ran the guard against a read-only command and
-    # could be denied by it, or paid a full gitleaks + nix flake check first.
-    # Reading a file that quotes a rule is not performing it.
-    #
-    # Both ends are trimmed. Leading alone was not enough: `tr` leaves a trailing
-    # space on every segment that is not the last, so a guarded command followed
-    # by `&& something` yielded a segment with a trailing space and an exact
-    # pattern never matched it.
+    # Anchored to the start of a SEGMENT, not a substring of the whole command —
+    # `segments` in the preamble is what makes that available, and the trimming
+    # this depends on is explained there. Unanchored, merely NAMING a guarded
+    # phrase triggered the guard: under Codex, which has no per-hook `if` filter to
+    # narrow the input first, an `rg` for one of these phrases in a file ran the
+    # guard against a read-only command and could be denied by it, or paid a full
+    # gitleaks + nix flake check first. Reading a file that quotes a rule is not
+    # performing it.
     matched=0
     while IFS= read -r seg; do
-      seg="''${seg#"''${seg%%[! ]*}"}"
-      seg="''${seg%"''${seg##*[! ]}"}"
-      [ -n "$seg" ] || continue
       case "$seg" in
       ${pattern}) matched=1 ;;
       esac
     done <<REQUIRES_SEGMENTS
-    $(printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n')
+    $(segments)
     REQUIRES_SEGMENTS
     [ "$matched" -eq 1 ] || exit 0
   '';

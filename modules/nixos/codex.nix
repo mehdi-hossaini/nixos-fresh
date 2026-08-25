@@ -99,18 +99,12 @@ let
       exit 0
     }
     # Segmented rather than matched whole, so `jj log && jj split` is caught on its
-    # second half instead of sliding past. Claude Code parses compound commands
-    # itself before applying permissions.deny; this is the same job done where the
-    # payload lands.
+    # second half instead of sliding past. `segments` is agent-guards.nix's, out of
+    # guardPreamble above — this loop used to carry its own copy of the splitter,
+    # which meant the code deciding whether a deny fires existed twice and could be
+    # corrected in one place only. The trimming rule and the bug behind it are
+    # written down there.
     while IFS= read -r seg; do
-      seg="''${seg#"''${seg%%[! ]*}"}"
-      # BOTH ends. Leading alone was the bug: `tr` leaves a trailing space on every
-      # segment that is not the last, so `jj split && jj log` produced "jj split "
-      # and the exact pattern "jj split" never matched it — the deny held for
-      # `jj log && jj split` and not for the reverse, which is the ordering that
-      # happened to get tested.
-      seg="''${seg%"''${seg##*[! ]}"}"
-      [ -n "$seg" ] || continue
       case "$seg" in
       ${lib.concatMapStringsSep "\n      " (
         g:
@@ -118,7 +112,7 @@ let
       ) (denies.bashGroups ++ denies.tuiGroups)}
       esac
     done <<SEGMENTS
-    $(printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n')
+    $(segments)
     SEGMENTS
     exit 0
   '';
