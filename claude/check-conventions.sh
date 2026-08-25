@@ -188,9 +188,15 @@ fi
 
 # ── the hop nobody else checks: inventory vs. its own stated source of truth ───
 head_ "Inventory vs. the nix files it summarises"
+# Comments are stripped before the word-search, because discovery widened
+# NIX_SOURCES to files whose comments name packages freely — "winboat" appears
+# in prose all over the tree, and a package removed from its list but still
+# discussed above it would have counted as declared. A name only survives this
+# grep if it exists in code.
 orphans=()
+stripped=$(sed 's/#.*//' "${NIX_SOURCES[@]}" 2>/dev/null)
 while read -r p; do
-  grep -qw -- "$p" "${NIX_SOURCES[@]}" 2>/dev/null || orphans+=("$p")
+  grep -qw -- "$p" <<<"$stripped" || orphans+=("$p")
 done < <(jq -r '.tools[] | select(.package != null) | .package' "$INVENTORY" | sort -u)
 if [ ${#orphans[@]} -eq 0 ]; then
   ok "every advertised package appears in one of the ${#NIX_SOURCES[@]} nix files that declare packages"
@@ -242,6 +248,27 @@ else
     bad "'$p' is in environment.systemPackages but has no tools.json entry — law 2 reads a missing entry as a deliberate absence"
   done
 fi
+
+# ── the machine block: facts an agent plans builds around ─────────────────────
+# hostname, arch, cpu_threads and ram_gb duplicate what machine.nix and the
+# hardware already know, which is the shape that drifts: each was copied in by
+# hand and nothing compared any of them against the machine, so a RAM upgrade or
+# a rename would leave an agent sizing builds from the old numbers. Every one is
+# one command away (law 6). ram_gb follows machine.nix's own definition — what
+# `free -g` prints as total.
+head_ "Machine block"
+mfact() {
+  want=$(jq -r ".machine.$1" "$INVENTORY")
+  if [ "$want" = "$2" ]; then
+    ok "machine.$1 ($want) matches the machine"
+  else
+    bad "machine.$1 says '$want' but the machine says '$2' — an agent reading the inventory plans around the wrong number"
+  fi
+}
+mfact hostname "$(hostname)"
+mfact cpu_threads "$(nproc)"
+mfact ram_gb "$(free -g | awk 'NR==2{print $2}')"
+mfact arch "$(uname -m)-linux"
 
 # ── traps that a rule in CLAUDE.md depends on staying true ────────────────────
 head_ "Traps"
@@ -433,6 +460,51 @@ if [ -f "$MANAGED" ]; then
   fi
 else
   bad "$MANAGED missing — the env guard and the nh hook are not declared"
+fi
+
+# ── the guards must speak a vocabulary the harness accepts ────────────────────
+# permissionDecision is an enum claude-code validates at the schema layer, and
+# output that fails it is downgraded to plain text — no deny, no ask, nothing.
+# That failure shipped: every guard answered "could not tell" with "escalate", a
+# word no claude-code accepts, so the one answer designed to never be silently
+# wrong was exactly that, from the day the guards were written until 2026-08-25.
+# The valid set is deliberately NOT written here — it is read out of the
+# installed binary's own validation error ("Valid types are: …"), so an upgrade
+# that changes the enum moves this check with it instead of leaving it asserting
+# a remembered list (law 6). Claude only: Codex's hook layer names no such enum
+# to read, and its guards collapse everything undecidable to deny anyway.
+if [ -f "$MANAGED" ]; then
+  claude_bin=$(readlink -f "$(command -v claude 2>/dev/null)" 2>/dev/null || true)
+  vocab=""
+  if [ -n "$claude_bin" ]; then
+    # The nixpkgs package is a wrapper beside the real binary; scan whichever of
+    # the two carries the string. grep for "allow" picks the permissionDecision
+    # enum out of the several "Valid types are:" strings the binary holds.
+    vocab=$(rg -ao --no-filename --no-line-number 'Valid types are: [a-z, ]+' \
+      "$claude_bin" "$(dirname "$claude_bin")/.claude-wrapped" 2>/dev/null |
+      grep -m1 'allow' | sed 's/Valid types are: //; s/,/ /g' | tr -s ' ') || true
+  fi
+  if [ -z "$vocab" ]; then
+    bad "cannot read the permissionDecision enum out of the claude binary — the guard-vocabulary check is asserting nothing"
+  else
+    unknown_words=()
+    while read -r w; do
+      [ -n "$w" ] || continue
+      case " $vocab " in
+      *" $w "*) ;;
+      *) unknown_words+=("$w") ;;
+      esac
+    done < <(jq -r '[.hooks[][] | .hooks[]?.command] | unique | .[]' "$MANAGED" 2>/dev/null |
+      xargs -r rg -ao --no-filename --no-line-number 'permissionDecision:"[a-z]+"' 2>/dev/null |
+      sed 's/.*"\([a-z]*\)"/\1/' | sort -u)
+    if [ ${#unknown_words[@]} -eq 0 ]; then
+      ok "every decision the hooks emit is in the claude binary's accepted set ($(echo "$vocab" | tr -s ' '))"
+    else
+      for w in "${unknown_words[@]}"; do
+        bad "a hook emits permissionDecision \"$w\", which the claude binary does not list in '$vocab' — the harness downgrades it to plain text and the guard decides nothing"
+      done
+    fi
+  fi
 fi
 
 # Skills are rules, so law 4 applies to them too. A global one is declared in this repo
