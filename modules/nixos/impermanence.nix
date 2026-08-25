@@ -158,6 +158,14 @@ in
     # .claude above — it keeps its own tree in the home root rather than under
     # .config, so without this entry every reboot means logging in again.
     ".codex"
+    # herdr keeps its config in ~/.config/herdr and its state in
+    # ~/.local/state/herdr, both covered wholesale below. This catches the third
+    # directory it uses and the only one in the home root: ~/.herdr/worktrees,
+    # where it checks out a git worktree per agent. Those are real work in
+    # progress, not a cache — losing them on reboot loses the branch the agent
+    # was building. Verified against herdr 0.8.2's src/worktree.rs rather than
+    # assumed: the default is the literal "~/.herdr/worktrees".
+    ".herdr"
     # Wholesale, deliberately: Plasma owns its own config and we declare only
     # the power settings (modules/home/plasma.nix) — everything else it writes
     # here is yours and unmanaged. ~/.config/jj rides along too.

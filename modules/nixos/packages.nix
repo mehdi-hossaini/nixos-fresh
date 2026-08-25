@@ -23,6 +23,20 @@
     # Alacritty has no tabs by design, so the multiplexer is not optional here —
     # without it you get one OS window per task.
     zellij
+    # The agent half of the same problem. zellij multiplexes panes; herdr
+    # multiplexes *agents* — one rust binary that keeps their sessions alive as a
+    # background server, marks every pane working / blocked / idle, and survives
+    # the terminal that started it. That last part is what a zellij tab cannot
+    # do: closing the window ends the agent with it.
+    #
+    # Packaged in nixpkgs, so law 1 is satisfiable without the `curl | sh` its
+    # README leads with. 0.8.0 here against 0.8.2 upstream — the lag is nixpkgs',
+    # not a pin, and nothing below depends on the difference.
+    #
+    # Its config and state land in ~/.config/herdr and ~/.local/state/herdr,
+    # both already persisted wholesale. Its *worktrees* default to ~/.herdr,
+    # which is the home root and is not — hence the entry in impermanence.nix.
+    herdr
     # Notes. The vault is ordinary markdown on disk, so where it lives decides
     # whether it survives a reboot: put it under ~/Documents or ~/Projects,
     # which impermanence.nix persists. A vault in the home root does not.
