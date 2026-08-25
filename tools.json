@@ -510,7 +510,7 @@
       "names": [
         "mergiraf"
       ],
-      "workaround": "`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` on a merge conflict — jj already ships the merge-tool config, so this needs zero setup. Syntax-aware: auto-merges what the AST allows (bash/yaml/toml/json among others; not nix), exit 1 means real conflicts remain for hand-editing, which is the existing CLAUDE.md route."
+      "workaround": "`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` on a merge conflict — jj already ships the merge-tool config, so this needs zero setup. Syntax-aware: auto-merges what it can prove safe (nix, bash, yaml, toml, json among others). Ignore the exit code — jj swallows mergiraf's, so 0 does not mean resolved and 1 is an error that merged nothing; `jj resolve --list` says what remains for hand-editing, which is the CLAUDE.md route. Evaluated 2026-08-25."
     },
     {
       "names": [

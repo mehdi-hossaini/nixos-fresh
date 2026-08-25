@@ -171,12 +171,20 @@ The model, which is what makes the command map read strangely at first:
 **Never trigger an editor.** Agent sessions pin `JJ_EDITOR` / `GIT_EDITOR` / `EDITOR` /
 `VISUAL` to `false`, so a forgotten `-m` now fails fast instead of hanging on a GUI
 window. That guard does not reach the **diff** editor: bare `jj split`, `jj diffedit`,
-`jj resolve`, and any `-i` / `--interactive` / `--editor` flag open jj's builtin TUI,
-which an agent shell cannot drive. Stay away from those. `jj split <paths>` is the
-exception — filesets select non-interactively and no editor opens. Resolve conflicts
-with `nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` first — it auto-merges
-what the syntax allows and exits 1 when real conflicts remain — then edit the still-
-marked files directly and `jj squash` or `jj new`.
+`jj resolve` — with or without paths — and any `-i` / `--interactive` / `--editor` flag
+open jj's builtin TUI, which an agent shell cannot drive. Stay away from those; the
+forms that never open an editor are `jj split <paths>`, `jj resolve --list` and
+`jj resolve --tool <tool>`.
+
+Resolve conflicts with `nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf`
+first — it auto-merges what it can prove safe (.nix included) and leaves the rest
+conflicted. Ignore the exit code: jj swallows mergiraf's, so 0 does not mean resolved,
+1 is an error that merged nothing at all (offline, a conflict with more than two
+sides), and 2 means there was no conflict — `jj resolve --list` is what says whether
+any remain. Edit the files it leaves marked directly. A conflict sitting in `@` is
+resolved the moment the file is saved, nothing to run after; one resolved in a child
+made with `jj new` is folded back with `jj squash -m "msg"` — bare `jj squash` trips
+the editor guard when both commits carry descriptions.
 
 **`nix flake check` gates every commit in `/etc/nixos`.** It runs nixfmt, deadnix,
 shellcheck and shfmt over the tree. jj has no hook support and bypasses `.git/hooks`, so

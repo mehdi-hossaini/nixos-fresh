@@ -108,10 +108,12 @@ rec {
     }
     {
       # jj's DIFF editor, which the env guard does not reach. Bare `jj split` and
-      # bare `jj resolve` open it; `jj split <paths>` and `jj resolve --list` are
-      # non-interactive and stay available, hence the exact-match form for those
-      # two.
-      reason = "this opens jj's builtin diff editor, which is a TUI: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). The non-interactive forms stay available — `jj split <paths>` takes filesets, `jj resolve --list` lists conflicts, and a conflict is resolved by editing the marked files directly and then `jj squash`.";
+      # bare `jj resolve` open it; `jj split <paths>`, `jj resolve --list` and
+      # `jj resolve --tool <tool>` are non-interactive and stay available, hence
+      # the exact-match form for split/resolve. `jj resolve <path>` without
+      # `--tool` also opens the TUI, but a pattern catching it would take --list
+      # and --tool down with it, so that slice stays prose in CLAUDE.md.
+      reason = "this opens jj's builtin diff editor, which is a TUI: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). The non-interactive forms stay available — `jj split <paths>` takes filesets, `jj resolve --list` lists conflicts, and `jj resolve --tool mergiraf` auto-merges what it can; edit the files it leaves marked directly, and trust `jj resolve --list`, not the exit code, to say whether any remain.";
       # Every pattern here exists in two forms, argument-full and bare, because a
       # trailing ` *` does NOT match the argument-less command: `Bash(jj diffedit *)`
       # let bare `jj diffedit` straight through, and `jj * -i *` let `jj squash -i`
