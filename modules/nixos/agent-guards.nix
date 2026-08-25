@@ -7,10 +7,11 @@
 # that is not cosmetic — how the agent says "I could not tell".
 #
 # That one decides whether a guard is a wall or a hole. Claude answers an
-# undecidable payload with `escalate`, which asks the user and is the single
+# undecidable payload with permissionDecision "ask" — the word matters, see
+# escalateFn in claude.nix — which hands the call to the user and is the single
 # answer that is never silently wrong. Codex has no such answer: its PreToolUse
 # parses `escalate` and `ask`, marks them failed, and RUNS THE COMMAND ANYWAY.
-# Handing Claude's escalate to Codex unchanged would therefore turn every careful
+# Handing Claude's ask to Codex unchanged would therefore turn every careful
 # "ask" into an allow, leaving a guard that reads as total and is not.
 # modules/nixos/codex.nix collapses it to a deny instead, and explains itself in
 # the deny reason rather than failing silently.

@@ -42,12 +42,12 @@ let
   # How Codex says "I could not tell" — and the reason this file exists rather
   # than a symlink to Claude's settings.
   #
-  # Claude escalates: it asks, and the user decides. That is the one answer that
-  # is never silently wrong, which is why agent-guards.nix reaches for it on every
+  # Claude asks, and the user decides. That is the one answer that is never
+  # silently wrong, which is why agent-guards.nix reaches for it on every
   # undecidable payload. Codex cannot do it. Its PreToolUse parses
   # permissionDecision "escalate" and "ask", marks the hook FAILED, and runs the
   # command anyway — verified against the published hook reference for 0.147.0.
-  # Passing Claude's escalate through unchanged would therefore convert every
+  # Passing Claude's ask through unchanged would therefore convert every
   # careful "ask" in every guard into a silent allow, leaving walls that read as
   # total and are holes.
   #

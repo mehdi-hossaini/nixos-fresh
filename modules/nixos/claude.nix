@@ -52,15 +52,30 @@ let
   # Exiting 0 is only honest when it means "this input is definitely not my
   # business". It is not honest when it means "I could not tell".
   #
-  # The undecidable case escalates rather than denying. Denying would be the safe
+  # The undecidable case asks rather than denying. Denying would be the safe
   # reflex, but a payload shape change would then block every Bash call in the
-  # session with no way through; escalating asks the user, which is the one answer
-  # that is never silently wrong. PostToolUse has no such control — it reports
-  # rather than blocks, and cannot allow anything by staying quiet — so the two
-  # hooks below carry `set -u` and nothing more.
+  # session with no way through; "ask" hands the call to the user, which is the
+  # one answer that is never silently wrong.
+  #
+  # The VALUE is "ask", and the word is load-bearing. This function said
+  # "escalate" from the day it was written, and claude-code does not accept that
+  # word: 2.1.234 validates permissionDecision against allow/deny/ask/defer at
+  # the schema layer and downgrades output that fails it to plain text — no
+  # decision at all. Every "could not tell" was therefore a silent fall-through
+  # to the ordinary permission flow, which is the exact hole this function
+  # exists to close, in the one path built to be never silently wrong. Found
+  # 2026-08-25 by reading the enum out of the installed binary rather than the
+  # docs; check-conventions.sh now asserts every decision a guard emits against
+  # that same binary, so the vocabulary cannot drift silently again. The
+  # function keeps its name — escalation is what it does; "ask" is how the
+  # harness spells it.
+  #
+  # PostToolUse has no such control — it reports rather than blocks, and cannot
+  # allow anything by staying quiet — so the two hooks below carry `set -u` and
+  # nothing more.
   escalateFn = ''
     escalate() {
-      ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"escalate",permissionDecisionReason:$r}}'
+      ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
       exit 0
     }
   '';

@@ -125,8 +125,11 @@ while IFS= read -r payload; do
     decision=allow
   else
     decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+    # "ask", not "escalate": claude-code's enum is allow/deny/ask/defer, and a
+    # word outside it is exactly the vocabulary bug this set must not absorb —
+    # an unknown decision counts as undecided and fails L1, by design.
     case $decision in
-    deny | escalate | allow) ;;
+    deny | ask | allow) ;;
     *)
       decision=undecided
       undecided=$((undecided + 1))
