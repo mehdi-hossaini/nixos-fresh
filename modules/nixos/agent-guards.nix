@@ -172,6 +172,23 @@ rec {
     set -u
     out=$(bash ${a.conventionsScript} 2>&1) && exit 0
     out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'FAIL|failed$')
+    # The script that just failed is the last SWITCHED generation's copy. When
+    # the repo carries a newer one that passes, the machine is stale and the
+    # instructions are fine — the opposite of what the message below claims,
+    # and a session opened on exactly that misread on 2026-08-25: a red check,
+    # an instruction to distrust CLAUDE.md, and a working tree that had already
+    # fixed everything except the activation. Say which case it is.
+    repo=/etc/nixos/claude/check-conventions.sh
+    if [ -r "$repo" ] && ! cmp -s "$repo" ${a.conventionsScript} && bash "$repo" >/dev/null 2>&1; then
+      ${jq} -n --arg o "$out" '{
+        systemMessage: "Convention check failed, but the repo copy passes — a fix is waiting on nh os switch.",
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: ("The installed check-conventions.sh (from the last switched generation) fails, but /etc/nixos/claude/check-conventions.sh passes: the repo already fixes this, and only the switch is behind — which belongs to the user (law 3). The instructions are current; read the failures below as the list of what flips green on activation.\n" + $o)
+        }
+      }'
+      exit 0
+    fi
     ${jq} -n --arg o "$out" '{
       systemMessage: "Convention check FAILED at session start — the machine no longer matches what tools.json and ${a.rulesFile} claim.",
       hookSpecificOutput: {
