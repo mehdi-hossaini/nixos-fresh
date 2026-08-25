@@ -56,6 +56,33 @@ let
       exit 1
     fi
   '';
+
+  # herdr ships its skill inside the binary rather than as a file — `herdr
+  # --skill` prints it — so "declared" here means generated at build time from
+  # the very binary that will execute the commands it documents. That is the
+  # stronger form of law 4, not a workaround for it: there is one source, and a
+  # herdr upgrade rewrites the skill in the same rebuild that moves the binary.
+  # A vendored copy could drift from the CLI it describes; this cannot.
+  #
+  # Checked before it is linked: --skill is not a stable public interface, and
+  # a future release that drops the flag or renames the skill would otherwise
+  # leave a valid-looking SKILL.md holding an error message or nothing at all.
+  # The grep makes that a failed build instead. Watched going red on purpose by
+  # inverting the pattern, per the obligation in CLAUDE.md.
+  #
+  # Claude only, deliberately. Codex reads $CODEX_HOME/skills the same way and
+  # would likely take this file unchanged, but ponytail's entry above says its
+  # Codex discovery was *verified* rather than assumed, and this one has not
+  # been. One line adds it the day that is checked.
+  herdrSkill = pkgs.runCommand "herdr-skill" { } ''
+    mkdir -p $out
+    ${pkgs.herdr}/bin/herdr --skill > $out/SKILL.md
+    if ! grep -qx 'name: herdr' $out/SKILL.md; then
+      echo "herdr --skill no longer prints a skill naming itself 'herdr' —" >&2
+      echo "the flag changed or was dropped; check 'herdr --help' before relinking." >&2
+      exit 1
+    fi
+  '';
 in
 {
   home.file.".claude/skills/mattpocock-skills".source = inputs.mattpocock-skills;
@@ -68,4 +95,10 @@ in
   # .claude-plugin/plugin.json), so it loads flat as /fp-review; there is nothing
   # to collide with, the name matches no built-in.
   home.file.".claude/skills/fp-review".source = ../../claude/skills/fp-review;
+
+  # Generated above rather than authored: see herdrSkill. It loads flat as
+  # /herdr and gates itself on HERDR_ENV=1, so it is inert in a session that
+  # is not running inside a herdr pane — which is every session until you
+  # start one.
+  home.file.".claude/skills/herdr".source = herdrSkill;
 }
