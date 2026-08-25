@@ -14,6 +14,7 @@
     ./desktop.nix
     ./hardware.nix
     ./packages.nix
+    ./winboat.nix
     ./claude.nix
     ./codex.nix
     ./home-manager.nix

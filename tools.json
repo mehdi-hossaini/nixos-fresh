@@ -3,7 +3,7 @@
   "$schema_notes": [
     "This file is checked mechanically by ~/.claude/check-conventions.sh — keep these contracts true or the check fails.",
     "tools[].commands — the executables the entry puts on PATH. Omitted means `[name]`. An empty array means the entry ships no binary under its own name (a bundle or a library).",
-    "tools[].package — the nixpkgs attribute or home-manager program name. Must appear in modules/nixos/packages.nix or modules/home/default.nix. null means it is not separately declared (base system).",
+    "tools[].package — the nixpkgs attribute or home-manager program name. Must appear in modules/nixos/packages.nix or modules/home/default.nix. null means the entry is not separately declared under its own attribute — the base system, or a command a service option puts on PATH; purpose says which.",
     "not_installed[].names — every command the entry covers, one per element. This is the machine-readable field; there is no `name` here on purpose, so the list cannot drift from its prose.",
     "tools[].agent_unsafe — commands that hang a session with no terminal. Optional; present only on the interactive entries. Each element is {command, forms}, where forms is \"all\" or \"bare\". \"all\" generates BOTH a bare and a `<name> *` deny — the bare form matters, because ` *` alone does not match the argument-less command that is actually typed. \"bare\" generates ONLY the exact match, for a tool whose subcommands are scriptable and must stay available: `codex` hangs, `codex exec` does not, and emitting `codex *` would deny the useful half while missing the form that hangs. Claude takes these declaratively and Codex through a hook, from this one array, so adding an interactive tool here denies it for both. Use a prefix as the command where the tool needs one: `zellij attach` is unsafe while `zellij action` and `zellij run` are not."
   ],
@@ -178,6 +178,12 @@
       "category": "dev-env",
       "purpose": "Compiler cache. Wired in globally via RUSTC_WRAPPER so devenv shells inherit it.",
       "notes": "`sccache --show-stats` to confirm cache hits. A cache hit is the cheapest way to survive the RAM ceiling."
+    },
+    {
+      "name": "docker",
+      "package": null,
+      "category": "container",
+      "purpose": "Rootful Docker daemon, on PATH because virtualisation.docker.enable is set in modules/nixos/winboat.nix — winboat drives a dockur/windows container through docker-compose. Not a package in packages.nix, and not an invitation: a container is not the route around law 1 for a tool nixpkgs already has. docker-compose is not on PATH system-wide; winboat's wrapper suffixes its own."
     },
     {
       "name": "shellcheck",
@@ -361,6 +367,13 @@
       "notes": "PrismLauncher-Cracked fork (github:Diegiwg/PrismLauncher-Cracked), overlaid to replace the official nixpkgs package — supports offline accounts only. The fork exists to bypass purchase verification, so a real Microsoft account is unsupported and risks violating Mojang/Microsoft ToS."
     },
     {
+      "name": "winboat",
+      "package": "winboat",
+      "category": "desktop",
+      "purpose": "Windows apps on Linux: a dockur/windows container running a real Windows VM under KVM, with an Electron front end that pulls individual app windows onto the Plasma taskbar over RDP. GUI, so an agent shell cannot drive it — and first run is a multi-hour unattended Windows install, not a command that returns.",
+      "notes": "Needs the rootful docker daemon and the docker group, both set in modules/nixos/winboat.nix, and /dev/kvm, which systemd's stock udev rules ship 0666. Carries a permittedInsecurePackages entry for its EOL electron-40.10.5 — the exact version string, so a nixpkgs bump fails loudly rather than widening the exception. State lives in ~/winboat (the Windows disk image, 32 GiB minimum), ~/.winboat (compose file, app list, guest credentials) and /var/lib/docker (the image and the container) — all three are in impermanence.nix, and losing any of them means installing Windows again."
+    },
+    {
       "name": "fish",
       "package": "fish",
       "category": "shell",
@@ -425,10 +438,9 @@
     },
     {
       "names": [
-        "docker",
         "podman"
       ],
-      "workaround": "Not enabled on this host."
+      "workaround": "Not enabled. Docker is — see .tools; it is rootful and exists for winboat. podman would have to be talked through /dev/kvm and RDP port binding, which winboat does not support."
     },
     {
       "names": [

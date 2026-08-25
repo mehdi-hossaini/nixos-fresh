@@ -127,6 +127,13 @@ in
       "/var/lib/NetworkManager"
       "/var/lib/fwupd"
       "/var/lib/AccountsService"
+      # WinBoat's container and the dockur/windows image it is built from. The
+      # Windows disk image itself is NOT in here — that is a bind mount to
+      # ~/winboat, persisted in the user list below — but without this the
+      # daemon comes up empty on every boot: the image re-pulls, and the
+      # container that WinBoat tracks by name is simply gone, so it offers to
+      # install Windows again on top of a disk image that is still there.
+      "/var/lib/docker"
       "/var/db/sudo"
     ];
     files = [ "/etc/machine-id" ];
@@ -166,6 +173,21 @@ in
     # was building. Verified against herdr 0.8.2's src/worktree.rs rather than
     # assumed: the default is the literal "~/.herdr/worktrees".
     ".herdr"
+    # WinBoat. ~/winboat is where the Windows disk image lands. Both of its
+    # directories sit in the home root and neither is a cache.
+    #
+    # The image is the reason. WinBoat's compose bind-mounts the install folder
+    # to /storage rather than using a docker volume, and SetupUI.vue defaults
+    # that folder to ~/winboat — so the 32 GiB minimum install the README asks
+    # for is written straight into the one directory impermanence wipes. Without
+    # this line the first reboot after a multi-hour Windows install silently
+    # takes all of it, and WinBoat comes up offering to install again.
+    #
+    # .winboat beside it is config and state (WINBOAT_DIR in constants.ts):
+    # the generated compose file, the app list, the guest-server credentials.
+    # Smaller, but losing it orphans a container that is still running.
+    "winboat"
+    ".winboat"
     # Wholesale, deliberately: Plasma owns its own config and we declare only
     # the power settings (modules/home/plasma.nix) — everything else it writes
     # here is yours and unmanaged. ~/.config/jj rides along too.
