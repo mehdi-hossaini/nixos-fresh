@@ -119,6 +119,28 @@ let
   notifyDesktop = pkgs.writeShellScript "claude-notify-desktop" ''
     set -u
     payload=$(cat)
+
+    # A payload this cannot read must SAY so, rather than posting an empty popup.
+    # Before this guard, unreadable input and "the agent had nothing to say"
+    # produced the same notify-send call: jq failed to stderr, which nobody
+    # reads, and what reached the screen looked like a Claude Code bug rather
+    # than a hook one. Same argument the guards above make for themselves —
+    # silence is honest when it means "not my business", never when it means
+    # "could not tell".
+    #
+    # `type == "object"` rather than a bare parse check, because it is one
+    # condition for every way this can go wrong. Verified against jq 1.8.2:
+    # invalid JSON exits 5, empty stdin 4, and valid-but-wrong-shape (null,
+    # false, a string, an array) exits 1. Only a real object exits 0.
+    #
+    # critical, because a notification hook that has stopped understanding its
+    # input is worth interrupting for — it means every notification after this
+    # one is also wrong, and nothing else would say so.
+    if ! ${jq} -e 'type == "object"' >/dev/null 2>&1 <<<"$payload"; then
+      exec ${notifySend} -a "Claude Code" -u critical "Claude Code" \
+        "Notification hook received an unreadable payload — the shape may have changed."
+    fi
+
     field() { ${jq} -r "$1" <<<"$payload"; }
 
     # The working directory names the session. With several agents running it is
