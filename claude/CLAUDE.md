@@ -169,22 +169,19 @@ The model, which is what makes the command map read strangely at first:
 | Back out of anything | `jj undo` · `jj op log` |
 
 **Never trigger an editor.** Agent sessions pin `JJ_EDITOR` / `GIT_EDITOR` / `EDITOR` /
-`VISUAL` to `false`, so a forgotten `-m` now fails fast instead of hanging on a GUI
-window. That guard does not reach the **diff** editor: bare `jj split`, `jj diffedit`,
-`jj resolve` — with or without paths — and any `-i` / `--interactive` / `--editor` flag
-open jj's builtin TUI, which an agent shell cannot drive. Stay away from those; the
-forms that never open an editor are `jj split <paths>`, `jj resolve --list` and
-`jj resolve --tool <tool>`.
+`VISUAL` to `false`, so a forgotten `-m` or an `--editor` flag fails fast instead of
+hanging on a GUI window. That guard does not reach the **diff** editor. These open a
+TUI an agent shell cannot drive: bare `jj split`; `jj diffedit` and `jj resolve` with
+or without paths; any `-i` / `--interactive` flag; any interactive `--tool`,
+`:builtin` included. The forms that stay safe are `jj split <paths>`,
+`jj resolve --list` and `jj resolve --tool mergiraf`.
 
 Resolve conflicts with `nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf`
-first — it auto-merges what it can prove safe (.nix included) and leaves the rest
-conflicted. Ignore the exit code: jj swallows mergiraf's, so 0 does not mean resolved,
-1 is an error that merged nothing at all (offline, a conflict with more than two
-sides), and 2 means there was no conflict — `jj resolve --list` is what says whether
-any remain. Edit the files it leaves marked directly. A conflict sitting in `@` is
-resolved the moment the file is saved, nothing to run after; one resolved in a child
-made with `jj new` is folded back with `jj squash -m "msg"` — bare `jj squash` trips
-the editor guard when both commits carry descriptions.
+first — it auto-merges what it can prove safe (.nix included), and its own warning
+lists what remains; ignore the exit code, jj swallows mergiraf's. Edit the files it
+leaves marked directly. `jj resolve` acts on one revision only — the repo-wide
+all-clear is `jj log -r 'conflicts()'` coming back empty, and a conflict inherited
+from a still-conflicted ancestor goes back with `jj squash --into <rev> <paths>`.
 
 **`nix flake check` gates every commit in `/etc/nixos`.** It runs nixfmt, deadnix,
 shellcheck and shfmt over the tree. jj has no hook support and bypasses `.git/hooks`, so
@@ -196,9 +193,10 @@ finding sooner, and note that it only sees tracked files — a new file still ha
 the gate deliberately leaves out.
 
 **Commit as you go.** `jj split <paths>` separates concerns that live in different
-files and is safe — it takes filesets and only opens the diff editor with `-i` or with
-no arguments at all. Two concerns inside *one* file cannot be separated without that
-editor, so commit each piece as you finish it rather than batching to the end.
+files and is safe — it takes filesets and only opens the diff editor with `-i`, a
+`--tool`, or no arguments at all. Two concerns inside *one* file cannot be separated
+without that editor, so commit each piece as you finish it rather than batching to
+the end.
 
 **Do not launch `jjui`** — it is a TUI and needs a terminal a subagent does not have.
 

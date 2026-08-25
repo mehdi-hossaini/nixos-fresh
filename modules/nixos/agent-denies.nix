@@ -108,12 +108,14 @@ rec {
     }
     {
       # jj's DIFF editor, which the env guard does not reach. Bare `jj split` and
-      # bare `jj resolve` open it; `jj split <paths>`, `jj resolve --list` and
-      # `jj resolve --tool <tool>` are non-interactive and stay available, hence
-      # the exact-match form for split/resolve. `jj resolve <path>` without
-      # `--tool` also opens the TUI, but a pattern catching it would take --list
-      # and --tool down with it, so that slice stays prose in CLAUDE.md.
-      reason = "this opens jj's builtin diff editor, which is a TUI: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). The non-interactive forms stay available — `jj split <paths>` takes filesets, `jj resolve --list` lists conflicts, and `jj resolve --tool mergiraf` auto-merges what it can; edit the files it leaves marked directly, and trust `jj resolve --list`, not the exit code, to say whether any remain.";
+      # `jj resolve` (with or without paths, unless --list or a non-interactive
+      # --tool) open it; `jj split <paths>`, `jj resolve --list` and
+      # `jj resolve --tool mergiraf` stay available, hence the exact-match form
+      # for split/resolve. The pattern language cannot deny `jj resolve <path>`
+      # without also denying --list and --tool; an argv-parsing guard slice could
+      # (agent-guards.nix has the precedent) — add it if the prose warning in the
+      # reason ever fails to hold.
+      reason = "this opens jj's builtin diff editor, which is a TUI: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). So does `jj resolve <path>` without a tool, even though no wall catches that spelling. The forms that stay available: `jj split <paths>`, `jj resolve --list`, and `nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` — run that first, edit what it leaves marked, and trust its warning output plus `jj log -r 'conflicts()'`, never the exit code.";
       # Every pattern here exists in two forms, argument-full and bare, because a
       # trailing ` *` does NOT match the argument-less command: `Bash(jj diffedit *)`
       # let bare `jj diffedit` straight through, and `jj * -i *` let `jj squash -i`

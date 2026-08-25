@@ -19,7 +19,7 @@
       "/etc/profiles/per-user/mehti/bin — home-manager programs (modules/home/default.nix)"
     ],
     "env": {
-      "EDITOR": "nvim — interactive sessions only, and set on jj's ui.editor as well as the variable, so `jj describe` does not depend on which shell launched it. Agent sessions pin JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL to `false` via managed settings, so a command that would open an editor fails fast instead of hanging on a full-screen one. That guard does not cover jj's diff editor (jj split/diffedit/resolve), which is a builtin TUI.",
+      "EDITOR": "nvim — interactive sessions only, and set on jj's ui.editor as well as the variable, so `jj describe` does not depend on which shell launched it. Agent sessions pin JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL to `false` via managed settings, so a command that would open an editor fails fast instead of hanging on a full-screen one. That guard does not cover jj's diff editor (bare jj split, jj diffedit, jj resolve without --list or --tool mergiraf), which is a builtin TUI.",
       "RUSTC_WRAPPER": "sccache",
       "CARGO_BUILD_JOBS": "6 (derived from machine.buildCores — see modules/nixos/machine.nix)",
       "CLAUDE_CONFIG_DIR": "/home/mehti/.claude"
@@ -510,7 +510,7 @@
       "names": [
         "mergiraf"
       ],
-      "workaround": "`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` on a merge conflict — jj already ships the merge-tool config, so this needs zero setup. Syntax-aware: auto-merges what it can prove safe (nix, bash, yaml, toml, json among others). Ignore the exit code — jj swallows mergiraf's, so 0 does not mean resolved and 1 is an error that merged nothing; `jj resolve --list` says what remains for hand-editing, which is the CLAUDE.md route. Evaluated 2026-08-25."
+      "workaround": "`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` on a merge conflict — jj already ships the merge-tool config, so this needs zero setup. Syntax-aware: auto-merges what it can prove safe (nix, bash, yaml, toml, json among others). Trust its warning output and `jj log -r 'conflicts()'`, never the exit code — jj swallows mergiraf's; what stays marked is hand-edited, the CLAUDE.md route. Evaluated 2026-08-25."
     },
     {
       "names": [

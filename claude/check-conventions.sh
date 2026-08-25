@@ -309,7 +309,7 @@ elif [ "$blocking_editor" = yes ]; then
 else
   ok "no env guard, but ui.editor ('$jj_ui_editor') does not block"
 fi
-note "jj split/diffedit/resolve use the DIFF editor (builtin TUI) — still agent-unsafe regardless"
+note "jj's DIFF editor (bare jj split, jj diffedit, jj resolve without --list or --tool mergiraf) is a builtin TUI — still agent-unsafe regardless"
 
 # The other two instances of law 3. Both were found by hitting them, and both are
 # assertable, unlike the law itself.
