@@ -272,10 +272,7 @@
       "package": "herdr",
       "category": "terminal",
       "purpose": "Agent multiplexer — a background rust server that keeps coding-agent sessions alive independently of the terminal that launched them, marking every pane working / blocked / idle. Complements zellij rather than replacing it: zellij multiplexes panes in one window and dies with it, herdr multiplexes agents and survives. Config in ~/.config/herdr, state in ~/.local/state/herdr, worktrees in ~/.herdr — all three persisted (modules/nixos/impermanence.nix). Upstream ships a `curl | sh` installer; nixpkgs carries it, so law 1 needs no exception.",
-      "notes": "Bare `herdr` starts or reattaches the TUI, so it is agent_unsafe and the generated deny covers `herdr` and `herdr *` alike. That second pattern is wider than the hang it prevents — it also blocks `herdr --help` and the scriptable subcommands behind the socket API — and the cost is accepted for the same reason it is accepted for nvim (modules/nixos/claude.nix): a deny pattern cannot express \"every invocation except the ones that return\". An agent that needs the socket API should ask.",
-      "agent_unsafe": [
-        "herdr"
-      ]
+      "notes": "Bare `herdr` starts or reattaches the TUI and will hang an agent shell (law 3). That is a note here rather than an entry in agent_unsafe, deliberately: the generated deny covers `herdr` and `herdr *` alike, and the second pattern would wall off the CLI and socket API — which is the reason to have herdr at all. A hung shell is interruptible and costs a session; losing the scriptable surface costs the tool. So this one is a handshake, not a wall. Drive it with subcommands and the socket API; do not run it bare."
     },
     {
       "name": "alacritty",
