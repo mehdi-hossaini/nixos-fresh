@@ -486,6 +486,17 @@ in
     # the repo. Not merged into a `programs.zellij` module because zellij stays
     # in packages.nix and adding the module would install a second copy.
     "zellij/config.kdl".source = ../../zellij/config.kdl;
+
+    # herdr, for the same reason as zellij directly above — and it had not
+    # written its config yet when this landed, so nothing had to be moved aside.
+    # The file holds the theme and the onboarding answer and nothing else;
+    # /etc/nixos/herdr/config.toml says why each is there.
+    #
+    # The cost, stated plainly: `herdr config reset-keys` cannot work against a
+    # read-only symlink. It exists to undo hand-edited keybindings, and there are
+    # none to undo when the file is declared, so the command is answering a
+    # question this setup does not raise.
+    "herdr/config.toml".source = ../../herdr/config.toml;
   };
 
   # gcc, gnumake, nodejs and unzip are all in tools.json's not_installed list,

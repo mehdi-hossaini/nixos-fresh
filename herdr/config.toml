@@ -1,0 +1,32 @@
+# herdr's config, declared here rather than left to the copy herdr writes into
+# ~/.config/herdr on first run. Same argument as zellij/config.kdl beside it: a
+# theme is a decision, and a decision belongs in the repo where it can be read,
+# reviewed and reproduced on a fresh machine — not in a generated dump the
+# program owns and rewrites.
+#
+# Only decisions are here. herdr's own --default-config is ~250 lines of
+# commented defaults; copying them in would re-state upstream's choices as if
+# they were ours, and every herdr release would make the copy quietly more
+# wrong. What is absent follows upstream, deliberately.
+
+# First-run notification setup. herdr shows it when this is missing as well as
+# when it is true, and writes the answer back — into what is a read-only store
+# symlink here, so the write would fail. Answering it in the file the symlink
+# points at means the prompt never runs and there is nothing to write.
+# Notifications on this machine already come from the Claude Code hook in
+# modules/nixos/claude.nix; herdr's own [ui.toast] delivery is left at upstream's
+# default rather than being a second, competing source of the same popup.
+onboarding = false
+
+[theme]
+# gruvbox, because everything else on this machine already is: the alacritty
+# palette in modules/home/palette.nix, whose contrast figures are asserted by
+# checks.alacritty-contrast. herdr ships its own gruvbox rather than reading
+# ours, so the two are the same family and not byte-identical — close enough
+# that a pane border is not a seam, and honest about which is which.
+#
+# herdr also lists a "terminal" theme, which by its name would take the host
+# terminal's colours and so match ours exactly. Not chosen: its semantics were
+# not verified, only inferred from the name, and law 6 is precisely about that
+# gap. One word here if it turns out to be what is wanted.
+name = "gruvbox"
