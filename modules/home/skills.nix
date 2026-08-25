@@ -100,4 +100,26 @@ in
   # start one.
   home.file.".claude/skills/herdr".source = herdrSkill;
   home.file.".codex/skills/herdr".source = herdrSkill;
+
+  # github.com/anthropics/skills: the four document skills only, a deliberate
+  # subset of the 19 upstream — adding another later is one more line here.
+  # Linked one directory each, NOT whole like mattpocock above, because the
+  # whole-bundle rule keys on .claude-plugin/plugin.json and this repo carries
+  # only a marketplace.json: no plugin manifest, so a whole link would bury
+  # every SKILL.md a level too deep (skills/<name>/SKILL.md) for flat
+  # discovery. The four names collide with nothing in any current root
+  # (checked against ~/.claude/skills and the built-in skill list, not
+  # assumed). Claude only for now — none of the four has been verified
+  # against Codex the way ponytail and herdr were, so per that precedent the
+  # ~/.codex/skills links wait for a `codex debug prompt-input` pass.
+  #
+  # Their bundled scripts expect python, node (+ the `docx` npm package),
+  # pandoc, pdftoppm and soffice on PATH — true of Anthropic's cloud sandbox,
+  # not of this machine. Nothing is installed for them on purpose (law 2):
+  # the agent borrows per use, and a borrow that keeps recurring gets
+  # promoted to packages.nix as its own decision.
+  home.file.".claude/skills/docx".source = "${inputs.anthropic-skills}/skills/docx";
+  home.file.".claude/skills/pdf".source = "${inputs.anthropic-skills}/skills/pdf";
+  home.file.".claude/skills/pptx".source = "${inputs.anthropic-skills}/skills/pptx";
+  home.file.".claude/skills/xlsx".source = "${inputs.anthropic-skills}/skills/xlsx";
 }
