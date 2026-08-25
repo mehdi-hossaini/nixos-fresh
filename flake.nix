@@ -246,6 +246,13 @@
             # configuration.nix was only ever flagged by repeated_keys, so with that
             # off it needs no exclusion. Verified 2026-08-22.
             statix.enable = true;
+            # This tree is mostly prose-carrying config no human proofreads, and
+            # nothing else spell-checks it. typos' identifier-aware dictionary held
+            # zero false positives over the whole tree when evaluated (2026-08-25),
+            # which is what makes it gateable rather than advisory — and its first
+            # run caught a real one, in agent-denies.nix. Watched red on that
+            # finding before the fix landed, per the obligation in CLAUDE.md.
+            typos.enable = true;
           };
         };
       });

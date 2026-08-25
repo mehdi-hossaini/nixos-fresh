@@ -112,7 +112,7 @@ rec {
       # non-interactive and stay available, hence the exact-match form for those
       # two.
       reason = "this opens jj's builtin diff editor, which is a TUI: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). The non-interactive forms stay available — `jj split <paths>` takes filesets, `jj resolve --list` lists conflicts, and a conflict is resolved by editing the marked files directly and then `jj squash`.";
-      # Every pattern here exists in two forms, argument-ful and bare, because a
+      # Every pattern here exists in two forms, argument-full and bare, because a
       # trailing ` *` does NOT match the argument-less command: `Bash(jj diffedit *)`
       # let bare `jj diffedit` straight through, and `jj * -i *` let `jj squash -i`
       # through, for both agents, from the day these were written until 2026-08-24.
