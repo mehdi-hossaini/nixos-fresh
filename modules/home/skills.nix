@@ -70,10 +70,15 @@ let
   # The grep makes that a failed build instead. Watched going red on purpose by
   # inverting the pattern, per the obligation in CLAUDE.md.
   #
-  # Claude only, deliberately. Codex reads $CODEX_HOME/skills the same way and
-  # would likely take this file unchanged, but ponytail's entry above says its
-  # Codex discovery was *verified* rather than assumed, and this one has not
-  # been. One line adds it the day that is checked.
+  # Both agents — and the second only after the same check ponytail's entry got.
+  # `CODEX_HOME=<throwaway> codex debug prompt-input`, with this SKILL.md dropped
+  # in, against codex-cli 0.147.0: herdr appeared in the skills block with its
+  # description intact, read from the one file. No Codex-specific variant, and
+  # nothing in the frontmatter needed translating.
+  #
+  # Done in a throwaway CODEX_HOME rather than after switching, because that
+  # answers "will Codex see this" while the link still does not exist — so the
+  # line below is added knowing rather than hoping.
   herdrSkill = pkgs.runCommand "herdr-skill" { } ''
     mkdir -p $out
     ${pkgs.herdr}/bin/herdr --skill > $out/SKILL.md
@@ -101,4 +106,5 @@ in
   # is not running inside a herdr pane — which is every session until you
   # start one.
   home.file.".claude/skills/herdr".source = herdrSkill;
+  home.file.".codex/skills/herdr".source = herdrSkill;
 }
