@@ -115,7 +115,7 @@ let
       ${lib.concatMapStringsSep "\n      " (
         g:
         "${lib.concatMapStringsSep " | " toCasePattern g.patterns}) deny ${lib.escapeShellArg g.reason} ;;"
-      ) (denies.bashGroups ++ [ denies.tuiGroup ])}
+      ) (denies.bashGroups ++ denies.tuiGroups)}
       esac
     done <<SEGMENTS
     $(printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n')

@@ -91,14 +91,22 @@ if jq -e '[.tools[] | select(has("commands") and (.commands | type) != "array")]
 else
   bad "a tools[].commands is not an array"
 fi
-# modules/nixos/claude.nix maps this field to Bash deny patterns, so a malformed
-# entry does not produce a bad rule — it produces no rule, and the wall it was
-# meant to build is silently missing.
-if jq -e '[.tools[] | select(has("agent_unsafe")) | select((.agent_unsafe | type) != "array" or (.agent_unsafe | length) == 0 or any(.agent_unsafe[]; type != "string"))] | length == 0' \
+# Each entry is {command, forms}: a bad `forms` is the dangerous case, because an
+# unrecognised value matches neither branch of the generator and silently emits no
+# pattern at all — the same "no rule rather than a bad rule" failure this block has
+# always guarded, one field deeper.
+if jq -e '[.tools[] | select(has("agent_unsafe"))
+           | select((.agent_unsafe | type) != "array"
+                    or (.agent_unsafe | length) == 0
+                    or any(.agent_unsafe[];
+                           type != "object"
+                           or (.command | type) != "string"
+                           or (.command | length) == 0
+                           or ((.forms // "") | IN("all", "bare") | not)))] | length == 0' \
   "$INVENTORY" >/dev/null; then
-  ok "every tools[].agent_unsafe is a non-empty array of strings where present"
+  ok "every tools[].agent_unsafe entry is {command, forms: all|bare}"
 else
-  bad "a tools[].agent_unsafe is malformed — claude.nix would build no deny rule from it"
+  bad "a tools[].agent_unsafe entry is malformed — the generator would build no deny rule from it"
 fi
 
 # Law 6 is about how to work, so most of it cannot be asserted — but the inventory's jj
@@ -338,18 +346,31 @@ if [ -f "$MANAGED" ]; then
   # reached the ACTIVE file. Red between editing the inventory and switching is
   # correct, not noise — the same property the "promised commands resolve" check
   # already has, and for the same reason.
+  # The pattern to look for depends on the form, which is the whole point of the
+  # field: "all" promises `Bash(<cmd> *)`, "bare" promises `Bash(<cmd>)` and
+  # promises that `Bash(<cmd> *)` is ABSENT. That second half matters more than it
+  # looks — a bare entry whose ` *` pattern leaked would deny the scriptable
+  # subcommands the entry exists to protect, and it would do so invisibly, since
+  # over-denying never fails loudly.
   undenied=()
-  while read -r c; do
+  while IFS=$'\t' read -r c f; do
     [ -n "$c" ] || continue
-    jq -e --arg r "Bash($c *)" '(.permissions.deny // []) | index($r)' "$MANAGED" >/dev/null ||
-      undenied+=("$c")
-  done < <(jq -r '[.tools[] | .agent_unsafe // empty | .[]] | unique[]' "$INVENTORY")
+    if [ "$f" = bare ]; then
+      jq -e --arg r "Bash($c)" '(.permissions.deny // []) | index($r)' "$MANAGED" >/dev/null ||
+        undenied+=("$c (bare, missing Bash($c))")
+      jq -e --arg r "Bash($c *)" '(.permissions.deny // []) | index($r)' "$MANAGED" >/dev/null &&
+        undenied+=("$c (bare, but Bash($c *) leaked and denies its subcommands)")
+    else
+      jq -e --arg r "Bash($c *)" '(.permissions.deny // []) | index($r)' "$MANAGED" >/dev/null ||
+        undenied+=("$c (all, missing Bash($c *))")
+    fi
+  done < <(jq -r '[.tools[] | .agent_unsafe // empty | .[]] | unique[] | "\(.command)\t\(.forms)"' "$INVENTORY")
   if [ ${#undenied[@]} -eq 0 ]; then
     n=$(jq -r '[.tools[] | .agent_unsafe // empty | .[]] | unique | length' "$INVENTORY")
-    ok "all $n agent_unsafe commands are denied in the active managed settings"
+    ok "all $n agent_unsafe entries are denied in the active managed settings, in the form they ask for"
   else
     for c in "${undenied[@]}"; do
-      bad "tools.json marks '$c' agent_unsafe but no Bash($c *) deny is active — run 'nh os switch /etc/nixos' if the config already has it"
+      bad "agent_unsafe mismatch: $c — run 'nh os switch /etc/nixos' if the config already has it"
     done
   fi
 else
