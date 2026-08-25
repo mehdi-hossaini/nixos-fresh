@@ -198,6 +198,18 @@ let
     }) ifs;
 
   settings = {
+    # Anthropic's built-in Concise style: leads with the result, drops preamble and
+    # narration, keeps error output, security findings and destructive-action
+    # confirmations whole. Needs claude-code >= 2.1.237; the assertion below says so
+    # rather than letting an older nixpkgs silently ignore the key.
+    #
+    # Declared here rather than written into ~/.claude/settings.json because it is a
+    # rule about how every response is shaped, and law 4 puts rules in the repo. The
+    # cost of the managed tier is that it is the top of the precedence stack: /config
+    # cannot change it and no project can override it. That is the intended trade —
+    # if per-project styles are ever wanted, this moves back to settings.json.
+    outputStyle = "Concise";
+
     # Law 3. A forgotten -m now fails fast instead of hanging on a GUI window.
     # This does not reach jj's builtin DIFF editor; those forms are denied below.
     env = {
@@ -437,6 +449,19 @@ in
   # Claude's own tools run. It does not follow `direnv exec`, `devbox run`, or a
   # script that calls the same command a level down. It narrows the way in, it
   # does not seal it.
+  # outputStyle = "Concise" names a built-in that only exists from 2.1.237. An older
+  # claude-code ignores an unknown style and silently falls back to Default, so the
+  # setting would look applied while doing nothing. Fail the build instead.
+  assertions = [
+    {
+      assertion = lib.versionAtLeast pkgs.claude-code.version "2.1.237";
+      message =
+        "claude.nix sets outputStyle = \"Concise\", a built-in added in claude-code "
+        + "2.1.237, but nixpkgs has ${pkgs.claude-code.version}. Update the nixpkgs "
+        + "input, or drop the setting until it lands.";
+    }
+  ];
+
   environment.etc."claude-code/managed-settings.json".source =
     (pkgs.formats.json { }).generate "managed-settings.json"
       settings;
