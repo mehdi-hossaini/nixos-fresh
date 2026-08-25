@@ -171,19 +171,31 @@ let
     exec ${notifySend} -a "Claude Code" -u "$urgency" "$title" "$body"
   '';
 
-  mkHook =
+  # One guard, every spelling of its trigger. `if` runs through the permission
+  # -rule matcher — verified against 2.1.234, whose if-predicate is built from
+  # the same preparePermissionMatcher the permission rules use — so a trailing
+  # " *" does NOT match the bare command, the exact finding agent-denies.nix
+  # records for the deny patterns. That finding was applied to the denies on
+  # 2026-08-24 and not here: bare `jj git push` — the form CLAUDE.md's own
+  # table teaches — published without the gitleaks + flake gate, and bare
+  # `nh os build` (valid, NH_FLAKE is set) left no marker for the hand-off
+  # reminder. Every hook below lists the bare form beside the starred one
+  # wherever the bare form does something; `git commit` and `jj commit` bare
+  # fail on the editor pin before anything commits, so only their starred
+  # forms are real.
+  mkHooks =
     {
-      if_,
+      ifs,
       command,
       timeout,
       statusMessage,
     }:
-    {
+    map (i: {
       type = "command";
-      "if" = if_;
+      "if" = i;
       command = "${command}";
       inherit timeout statusMessage;
-    };
+    }) ifs;
 
   settings = {
     # Law 3. A forgotten -m now fails fast instead of hanging on a GUI window.
@@ -199,50 +211,53 @@ let
       PreToolUse = [
         {
           matcher = "Bash";
-          hooks = [
-            (mkHook {
-              if_ = "Bash(git commit *)";
+          hooks =
+            mkHooks {
+              ifs = [ "Bash(git commit *)" ];
               command = colocatedCommitGuard;
               timeout = 10;
               statusMessage = "Checking for a colocated repo";
-            })
-            (mkHook {
-              if_ = "Bash(jj commit *)";
+            }
+            ++ mkHooks {
+              ifs = [ "Bash(jj commit *)" ];
               command = publishGate;
               timeout = 180;
               statusMessage = "Gating the commit on gitleaks + nix flake check";
-            })
-            (mkHook {
-              if_ = "Bash(jj git push *)";
+            }
+            ++ mkHooks {
+              ifs = [
+                "Bash(jj git push)"
+                "Bash(jj git push *)"
+              ];
               command = publishGate;
               timeout = 180;
               statusMessage = "Gating the push on gitleaks + nix flake check";
-            })
-            (mkHook {
-              if_ = "Bash(nh os build *)";
+            }
+            ++ mkHooks {
+              ifs = [
+                "Bash(nh os build)"
+                "Bash(nh os build *)"
+                "Bash(nix flake check)"
+                "Bash(nix flake check *)"
+              ];
               command = untrackedNixGuard;
               timeout = 10;
               statusMessage = "Checking for untracked nix files";
-            })
-            (mkHook {
-              if_ = "Bash(nix flake check *)";
-              command = untrackedNixGuard;
-              timeout = 10;
-              statusMessage = "Checking for untracked nix files";
-            })
-            {
-              type = "command";
-              command = "${commandShapeGuard}";
-              timeout = 10;
-              statusMessage = "Checking the command shape";
             }
-            {
-              type = "command";
-              command = "${spillPaginationGuard}";
-              timeout = 10;
-              statusMessage = "Checking for a paginated spill read";
-            }
-          ];
+            ++ [
+              {
+                type = "command";
+                command = "${commandShapeGuard}";
+                timeout = 10;
+                statusMessage = "Checking the command shape";
+              }
+              {
+                type = "command";
+                command = "${spillPaginationGuard}";
+                timeout = 10;
+                statusMessage = "Checking for a paginated spill read";
+              }
+            ];
         }
       ];
 
@@ -260,20 +275,22 @@ let
         }
         {
           matcher = "Bash";
-          hooks = [
-            (mkHook {
-              if_ = "Bash(nh *)";
+          hooks =
+            mkHooks {
+              ifs = [ "Bash(nh *)" ];
               command = conventionsCheck;
               timeout = 30;
               statusMessage = "Checking machine conventions";
-            })
-            (mkHook {
-              if_ = "Bash(nh os build *)";
+            }
+            ++ mkHooks {
+              ifs = [
+                "Bash(nh os build)"
+                "Bash(nh os build *)"
+              ];
               command = recordBuild;
               timeout = 60;
               statusMessage = "Recording the built generation";
-            })
-          ];
+            };
         }
       ];
 
@@ -345,23 +362,41 @@ let
       # Not included either: `Bash(* --version)` and `Bash(* --help *)`, which law
       # 6 would otherwise want. Auto mode drops leading-wildcard allow rules as
       # broad grants of execution, so they would be dead weight and misleading.
+      # Bare forms are listed beside their starred ones because the matcher
+      # treats them as different commands — a trailing " *" does not match the
+      # argument-less invocation (same finding as the deny list and the hook
+      # `if`s) — and `jj st`, `jj log`, `nix flake check` are typed bare more
+      # often than not, so the starred rules alone left the most common reads
+      # on the reviewed path this list exists to take them off. Only forms that
+      # do something bare are listed; a bare `rg` or `jj file show` just errors.
       allow = [
         "Bash(jj)"
+        "Bash(jj st)"
         "Bash(jj st *)"
+        "Bash(jj log)"
         "Bash(jj log *)"
+        "Bash(jj diff)"
         "Bash(jj diff *)"
+        "Bash(jj show)"
         "Bash(jj show *)"
+        "Bash(jj file list)"
         "Bash(jj file list *)"
         "Bash(jj file show *)"
+        "Bash(jj op log)"
         "Bash(jj op log *)"
+        "Bash(jj bookmark list)"
         "Bash(jj bookmark list *)"
         "Bash(rg *)"
         "Bash(fd *)"
         "Bash(jq *)"
         "Bash(nix eval *)"
+        "Bash(nix flake check)"
         "Bash(nix flake check *)"
+        "Bash(nix flake metadata)"
         "Bash(nix flake metadata *)"
+        "Bash(nix flake show)"
         "Bash(nix flake show *)"
+        "Bash(nh os build)"
         "Bash(nh os build *)"
         "Bash(bash ~/.claude/check-conventions.sh)"
       ];
