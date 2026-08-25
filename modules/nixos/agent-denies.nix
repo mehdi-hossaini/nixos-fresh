@@ -143,6 +143,21 @@ rec {
         "nh os switch *"
       ];
     }
+    {
+      # The docker group is root-equivalent — `docker run -v /:/x` edits the
+      # host as root — and unlike wheel it asks for no password, so it stands
+      # beside the sudo wall as an open gate: every other rule here assumes
+      # that changing the system waits on a prompt only the user can answer.
+      # winboat.nix is why the group exists at all, and tools.json already says
+      # docker is "not an invitation"; this is that sentence with teeth. Both
+      # forms, because even the read-only subcommands have no agent use here —
+      # nothing agent-facing runs in a container on this machine.
+      reason = "the docker group is root-equivalent, and unlike sudo it prompts for nothing — a container with a bind mount edits the host as root, which walks around the password hand-off every other wall here assumes (law 3). Docker exists on this machine for winboat alone (tools.json), not as an agent tool. If a task genuinely needs a container, say so and the user can run it.";
+      patterns = [
+        "docker"
+        "docker *"
+      ];
+    }
   ];
 
   # Claude's form. Order is load-bearing only in that it must not change without
