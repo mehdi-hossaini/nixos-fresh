@@ -80,6 +80,17 @@
     # remembering to install.
     shellcheck
     gitleaks
+    # The two survivors of a 2026-08-25 tool research pass that started from ~40
+    # candidates: on a machine where no human reviews output, a PATH slot goes to
+    # what lets an agent PROVE work rather than assert it, and only these two
+    # earned one. typos spell-checks the prose this tree mostly is — its live
+    # test found a real typo in agent-denies.nix with zero false positives, which
+    # is what let it become a gate (flake.nix) rather than advice. hyperfine
+    # turns "this is faster" into statistics with an exit code; `--style basic`,
+    # because it ignores NO_COLOR. Everything else from the pass is documented in
+    # tools.json's not_installed with its trigger, or was rejected.
+    typos
+    hyperfine
     # shfmt formats what shellcheck only complains about — the pair is worth
     # having together, since a lint-only setup leaves scripts unnormalised.
     shfmt

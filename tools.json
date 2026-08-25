@@ -198,6 +198,20 @@
       "purpose": "Shell formatter — the other half of shellcheck. `shfmt -d <file>` shows the diff, `shfmt -w` applies it."
     },
     {
+      "name": "typos",
+      "package": "typos",
+      "category": "quality",
+      "purpose": "Source and prose spell checker with an identifier-aware dictionary — near-zero false positives, which is why it is gated in `nix flake check` here rather than advisory. `typos --format brief <path>`; exit 2 means findings; `--write-changes` fixes in place.",
+      "notes": "Run it over anything you write before calling it finished — this machine's output is mostly prose-carrying config that no human proofreads. Its first run on this tree caught a real typo in agent-denies.nix."
+    },
+    {
+      "name": "hyperfine",
+      "package": "hyperfine",
+      "category": "quality",
+      "purpose": "Statistical benchmarking of shell commands — a performance claim without hyperfine numbers is an assertion, not a result. `hyperfine --style basic --export-json out.json 'cmd A' 'cmd B'`; `-N` skips the shell for hot-path timing; `-w` adds warmup runs.",
+      "notes": "`--style auto` already drops the progress bar without a TTY, but NO_COLOR is ignored — pass `--style basic` in agent shells."
+    },
+    {
       "name": "deadnix",
       "package": "deadnix",
       "category": "nix",
@@ -399,12 +413,13 @@
         "curl",
         "ssh",
         "rsync",
+        "strace",
         "sudo",
         "systemctl"
       ],
       "category": "shell",
       "purpose": "Base-system commands, always present. `curl` lives here — there is no wget.",
-      "notes": "Not a nixpkgs attribute of its own, hence package: null. The bundle name is not itself a command; the `commands` array is what exists on PATH."
+      "notes": "Not a nixpkgs attribute of its own, hence package: null. The bundle name is not itself a command; the `commands` array is what exists on PATH. rsync and strace ride in via NixOS's environment.defaultPackages rather than any list in this repo — present by default, listed here so the inventory stops under-promising what PATH actually holds."
     }
   ],
   "not_installed": [
@@ -452,7 +467,7 @@
       "names": [
         "unzip"
       ],
-      "workaround": "`nix shell nixpkgs#unzip`, or `bsdtar`/`tar` where the format allows."
+      "workaround": "`nix shell nixpkgs#unzip -c unzip <file>`. `tar` handles .tar.* archives; a plain .zip needs unzip — there is no bsdtar on PATH, despite what this entry used to claim."
     },
     {
       "names": [
@@ -477,6 +492,44 @@
         "bat"
       ],
       "workaround": "`, bat` — only bat.out ships /bin/bat, so there is no ambiguity to resolve the way there is for yq. Dropped 2026-08-24 after 0 invocations in 10,591 recorded commands: it was enabled but nothing ever called it, since no PAGER, MANPAGER or fzf preview named it. `less` is the pager and `nvim` opens what wants highlighting."
+    },
+    {
+      "names": [
+        "manix"
+      ],
+      "workaround": "Skip it, deliberately — its option database evaluates stock modules only and cannot see this flake's custom options. The covered routes: `nix eval` over nixosConfigurations.<host>.options (sees everything, custom options included), `nh search options` (NixOS + home-manager scopes, --json), `man home-configuration.nix` for offline HM docs, noogle.dev by web for lib functions. Evaluated 2026-08-25."
+    },
+    {
+      "names": [
+        "semgrep",
+        "opengrep"
+      ],
+      "workaround": "Deferred until a project actually gates on SAST — 696 MiB closure and useful only with vendored local rules. When borrowed: `nix shell nixpkgs#semgrep -c semgrep scan --config <local-rules-dir> --metrics=off --disable-version-check --error --quiet --sarif .` — NEVER `--config auto`, which fetches the registry and sends telemetry on every run, and logged-out output redacts fingerprints. opengrep is the cleaner engine (LGPL, no telemetry) but is not in nixpkgs. Evaluated 2026-08-25."
+    },
+    {
+      "names": [
+        "mergiraf"
+      ],
+      "workaround": "`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf` on a merge conflict — jj already ships the merge-tool config, so this needs zero setup. Syntax-aware: auto-merges what the AST allows (bash/yaml/toml/json among others; not nix), exit 1 means real conflicts remain for hand-editing, which is the existing CLAUDE.md route."
+    },
+    {
+      "names": [
+        "hurl"
+      ],
+      "workaround": "`nix shell nixpkgs#hurl -c hurl --test api.hurl` — HTTP assertions as a plain file with a real exit code, the mechanical way to prove an API behaves instead of eyeballing curl output. A project that adopts .hurl suites pins hurl in its own devenv.nix."
+    },
+    {
+      "names": [
+        "duckdb"
+      ],
+      "workaround": "`nix shell nixpkgs#duckdb -c duckdb -c \"SELECT ...\"` for CSV/parquet/sqlite/large-JSON analysis — one SQL engine instead of csv-tool sprawl. ALWAYS pass `-c`: bare duckdb is a REPL and hangs a session with no terminal."
+    },
+    {
+      "names": [
+        "pandoc",
+        "typst"
+      ],
+      "workaround": "`nix shell nixpkgs#pandoc nixpkgs#typst -c pandoc in.md -o out.docx` — only for PRODUCING docx/pptx/pdf for humans; never borrow it to read, agents read PDFs natively. PDF goes through `--pdf-engine=typst`, never the multi-GiB TeX route."
     }
   ],
   "conventions": [
@@ -486,6 +539,8 @@
     "statix is gated, with four house-style lints turned off in statix.toml at the repo root (repeated_keys, manual_inherit, manual_inherit_from, empty_pattern) — the disagreement was a configuration problem, and leaving it unconfigured meant every OTHER statix lint went unenforced too. The file is undotted on purpose: statix auto-discovers `statix.toml` and not `.statix.toml`, so a by-hand `statix check .` behaves exactly like the gate.",
     "One thing `nix flake check` does not cover: installer.sh is exempt from shfmt. It has never been formatted, needs 256 lines changed at any indent width, and partitions disks and shreds an encryption keyfile, so reformatting it is a deliberate decision rather than a side effect. shellcheck still covers it.",
     "hosts/*/hardware-configuration.nix is generated by nixos-generate-config and excluded from every nix linter — it carries a real unused argument whose only fix the file forbids, a permanent false positive. Running deadnix by hand: the path comes first, `deadnix . -e ./hosts`, because --exclude is variadic and swallows the positional, so `deadnix -e ./hosts` silently scans nothing and exits 0.",
-    "`nh` and `git` run as the user, never as root. /etc/nixos is already user-owned, so edits need no sudo."
+    "`nh` and `git` run as the user, never as root. /etc/nixos is already user-owned, so edits need no sudo.",
+    "Service CLIs follow the gh model: the human auths once with a long-lived scoped token (env or machine.secretsDir, never a browser flow that expires), agent-hostile defaults are disabled declaratively (AWS_PAGER=\"\", WRANGLER_SEND_METRICS=false, CLOUDSDK_CORE_DISABLE_PROMPTS=1 and their kin), and a CLI is installed only when the service is actually in use — plain CRUD against a stable REST API is curl plus a bearer token, not a wrapper CLI.",
+    "Never start a dev server in the foreground — it holds the shell and the session with it. `devenv up` runs a project's processes supervised under process-compose, which devenv already bundles: logs land in files, and nothing spawns a duplicate server."
   ]
 }
