@@ -14,7 +14,22 @@ set -u
 # Overridable so the check can be mutation-tested against a doctored copy:
 #   INVENTORY=/tmp/broken.json bash check-conventions.sh   # must go red
 INVENTORY=${INVENTORY:-/etc/nixos/tools.json}
-NIX_SOURCES=(/etc/nixos/modules/nixos/packages.nix /etc/nixos/modules/home/default.nix)
+# The nix files the inventory summarises. DISCOVERED, not listed, for the same
+# reason GUARDS is below — and this one had already started to rot. It was the
+# hard-coded pair (packages.nix, home/default.nix) up to the moment winboat.nix
+# added a SECOND environment.systemPackages: a package declared there would have
+# been reported as declared in neither nix file, which is a true-looking failure
+# about a file the check had simply never been told about. Anything under modules
+# that declares a package or a program is a source by definition.
+# Space-separated, so the NIX_SOURCES= override still takes one path or many.
+if [ -n "${NIX_SOURCES:-}" ]; then
+  read -r -a NIX_SOURCES <<<"$NIX_SOURCES"
+else
+  mapfile -t NIX_SOURCES < <(
+    grep -rlE 'environment\.systemPackages|home\.packages|programs\.[a-z]' \
+      /etc/nixos/modules --include='*.nix' 2>/dev/null | sort
+  )
+fi
 SETTINGS=${SETTINGS:-$HOME/.claude/settings.json}
 MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
@@ -178,10 +193,53 @@ while read -r p; do
   grep -qw -- "$p" "${NIX_SOURCES[@]}" 2>/dev/null || orphans+=("$p")
 done < <(jq -r '.tools[] | select(.package != null) | .package' "$INVENTORY" | sort -u)
 if [ ${#orphans[@]} -eq 0 ]; then
-  ok "every declared package appears in packages.nix or home/default.nix"
+  ok "every advertised package appears in one of the ${#NIX_SOURCES[@]} nix files that declare packages"
 else
   for p in "${orphans[@]}"; do
-    bad "package '$p' is advertised in tools.json but declared in neither nix file"
+    bad "package '$p' is advertised in tools.json but declared in no nix file under modules/"
+  done
+fi
+
+# The other direction, which nothing checked until now. The walk above only proves
+# the inventory does not advertise a package that is gone; it says nothing about a
+# package that is DECLARED and missing from the inventory. That asymmetry matters
+# because law 2 sends every agent to the inventory first, so a tool with no entry
+# does not read as an oversight — it reads as a deliberate absence. winboat was
+# exactly that for a while: installed, on PATH, and invisible here.
+#
+# environment.systemPackages only, and the message says so. Those lists are bare
+# nixpkgs attribute names, so the comparison is exact. The home side declares tools
+# as programs.<name>.enable, whose name is a home-manager module rather than a
+# nixpkgs attribute — plasma-manager's programs.plasma is not a tool and has no
+# entry to find — so covering it would need an exemption list, which is the shape
+# this whole section is trying to get rid of.
+declared=$(awk '
+  /^[[:space:]]*environment\.systemPackages[[:space:]]*=/ { inlist = 1 }
+  inlist {
+    line = $0
+    sub(/#.*/, "", line)
+    sub(/.*environment\.systemPackages[[:space:]]*=/, "", line)
+    gsub(/with[[:space:]]+pkgs[[:space:]]*;/, "", line)
+    gsub(/pkgs\./, "", line)
+    gsub(/[][;]/, " ", line)
+    n = split(line, a, /[[:space:]]+/)
+    for (i = 1; i <= n; i++)
+      if (a[i] ~ /^[A-Za-z][A-Za-z0-9_-]*$/) print a[i]
+    if ($0 ~ /\];/) inlist = 0
+  }
+' "${NIX_SOURCES[@]}" 2>/dev/null | sort -u)
+mapfile -t uninventoried < <(
+  comm -23 <(printf '%s\n' "$declared") \
+    <(jq -r '.tools[].package | select(. != null)' "$INVENTORY" | sort -u)
+)
+if [ -z "$declared" ]; then
+  bad "no environment.systemPackages entry could be read out of ${#NIX_SOURCES[@]} nix source(s) — the reverse check is asserting nothing"
+elif [ ${#uninventoried[@]} -eq 0 ]; then
+  n=$(printf '%s\n' "$declared" | grep -c .)
+  ok "all $n packages in environment.systemPackages have an inventory entry"
+else
+  for p in "${uninventoried[@]}"; do
+    bad "'$p' is in environment.systemPackages but has no tools.json entry — law 2 reads a missing entry as a deliberate absence"
   done
 fi
 
