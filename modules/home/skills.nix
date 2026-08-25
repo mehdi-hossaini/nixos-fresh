@@ -94,13 +94,6 @@ in
   home.file.".claude/skills/ponytail".source = ponytail;
   home.file.".codex/skills/ponytail".source = ponytail;
 
-  # fp-review: authored here rather than pulled from a flake input, so law 4 is
-  # satisfied the same way — home.file makes it a read-only store symlink and
-  # nothing under ~/.claude/skills is hand-written. Not a plugin bundle (no
-  # .claude-plugin/plugin.json), so it loads flat as /fp-review; there is nothing
-  # to collide with, the name matches no built-in.
-  home.file.".claude/skills/fp-review".source = ../../claude/skills/fp-review;
-
   # Generated above rather than authored: see herdrSkill. It loads flat as
   # /herdr and gates itself on HERDR_ENV=1, so it is inert in a session that
   # is not running inside a herdr pane — which is every session until you
