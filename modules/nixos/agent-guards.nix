@@ -88,6 +88,71 @@ rec {
     [ "$matched" -eq 1 ] || exit 0
   '';
 
+  # ── the one wall that is not a rule ─────────────────────────────────────────
+  # Borrowed from NousResearch/hermes-agent's agent/estop.py, whose semantics are
+  # the part worth taking: a sentinel file pauses NEW work, in-flight work is
+  # never killed, and the check is a single stat so it can afford to run on every
+  # call.
+  #
+  # Why this machine wants one. Every other wall here is a RULE: it knows in
+  # advance which commands it objects to, and it was written before the session
+  # started. This one has no opinion about any command. It exists so a human can
+  # stop every agent on the machine at once, from outside, mid-session — and that
+  # gap was not theoretical. On 2026-08-26 a concurrent Codex session was editing
+  # /etc/nixos while this one committed, and its work was swept into a commit
+  # whose message never mentioned it. Ctrl-C ends the session you are looking at;
+  # nothing ended the other one.
+  #
+  # ONE sentinel for every agent, deliberately not ${a.prefix}-scoped the way
+  # builtMarker above is. A stop switch that stops one of the two agents running
+  # is the wrong wall, and the shared name is what makes that true by
+  # construction rather than by both files remembering to agree.
+  #
+  # Under XDG_RUNTIME_DIR, which is law 5 read backwards. This is the one piece of
+  # state here that must NOT survive a reboot: an ESTOP that outlives the machine
+  # it was set on is indistinguishable from a harness that is simply broken, and
+  # the person who would recognise it is the one who set it hours earlier.
+  estopSentinel = "\${XDG_RUNTIME_DIR:-/tmp}/agent-estop";
+
+  estopGuard = pkgs.writeShellScript "${a.prefix}-guard-estop" ''
+    set -u
+    # Drained, not parsed. This is the only guard whose decision does not depend
+    # on the payload at all, which makes it total by construction — there is no
+    # shape it can be confused by, so the totality argument the rest of this file
+    # has to make in prose is simply absent here. The read is still performed so
+    # the harness is not writing into a closed pipe.
+    cat >/dev/null 2>&1
+
+    estop=${estopSentinel}
+    [ -e "$estop" ] || exit 0
+
+    # Fail-safe, and the ONLY guard here that is. The rule at the top of this file
+    # says an undecidable input becomes a question, because denying on a payload
+    # shape change would wall off a whole session for no reason. That reasoning
+    # inverts for a switch: an unreadable sentinel is not an input this failed to
+    # understand, it is evidence somebody reached for the switch. estop.py makes
+    # the same call in the same words — "a corrupt or empty file still counts as
+    # engaged (fail safe): the pause must hold even if the file was created by
+    # touch". So the read below cannot change the decision, only the wording.
+    reason=$(head -c 2000 "$estop" 2>/dev/null) || reason=""
+    [ -n "$reason" ] || reason="none recorded in the sentinel"
+
+    # This deny names no route out, and that is the design rather than an
+    # oversight. claude/replay-guards.sh's L2 says a guard must never deny its own
+    # remedy, and that holds for every wall the agent is expected to comply with
+    # and then carry on past. An ESTOP is the exception the law needs: the remedy
+    # is not the agent's to perform, because an agent that can clear its own stop
+    # switch does not have one. So it hands over instead, the same shape law 3
+    # uses for `nh os switch` and for the same reason.
+    ${jq} -n --arg r "$reason" --arg p "$estop" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: ("ESTOP is engaged, so every tool call is denied. This is a deliberate pause on new work, not a failure of the thing you just tried, and nothing in flight was killed — reason given: " + $r + "\n\nOnly the user can lift it, by removing " + $p + ". Stop and say so rather than looking for a way around it: there is no route out that this guard allows, by design.")
+      }
+    }'
+  '';
+
   # The pre-commit gate jj cannot host: jj has no hook support and bypasses
   # .git/hooks, so both checks run from PreToolUse on `jj commit` and
   # `jj git push`. Only fires when the working directory is /etc/nixos.

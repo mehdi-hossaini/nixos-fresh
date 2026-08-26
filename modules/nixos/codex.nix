@@ -165,6 +165,21 @@ let
 
   requirements = toml.generate "codex-requirements.toml" {
     hooks.PreToolUse = [
+      # First, and with NO matcher, so it covers apply_patch and anything else
+      # Codex grows as well as the exec aliases below. Every other guard here
+      # objects to a particular command; this one objects to the session
+      # continuing at all, so a file edit has to hit it too.
+      #
+      # Omitted rather than "*": ConfiguredHookMatcherGroup types the field as
+      # `matcher: string | null`, so an absent key is the match-all this schema
+      # actually documents. claude.nix spells the same intent "*" because its
+      # matcher is an exact string unless it contains regex characters — same
+      # wall, two vocabularies, each verified against its own agent.
+      {
+        hooks = [
+          (mkHook "${guards.estopGuard}" "Checking the stop switch" 5)
+        ];
+      }
       {
         matcher = "^(Bash|exec_command|shell_command|unified_exec|local_shell)$";
         hooks = [

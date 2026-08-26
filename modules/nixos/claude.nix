@@ -100,6 +100,7 @@ let
     };
   };
   inherit (guards)
+    estopGuard
     publishGate
     colocatedCommitGuard
     sessionStartCheck
@@ -231,6 +232,28 @@ let
 
     hooks = {
       PreToolUse = [
+        # First, and matching every tool rather than only Bash. Every other guard
+        # here objects to a particular command; this one objects to the session
+        # continuing at all, so a Write or a WebFetch has to hit it too — a stop
+        # switch that leaves the file-editing tools open is not one.
+        #
+        # "*" is the documented spelling and not a guess: the matcher is an exact
+        # string (or `|`-separated list) while it contains only word characters,
+        # and a regex once it does not, so the "Bash" below is exact and "*" is
+        # the wildcard the docs name alongside "" and omitting the field.
+        # codex.nix omits it instead — its schema types the field as
+        # `string | null`, so null is the match-all there.
+        {
+          matcher = "*";
+          hooks = [
+            {
+              type = "command";
+              command = "${estopGuard}";
+              timeout = 5;
+              statusMessage = "Checking the stop switch";
+            }
+          ];
+        }
         {
           matcher = "Bash";
           hooks =
