@@ -131,4 +131,42 @@
     # and runs it, leaving nothing behind. No second database to build.
     comma
   ];
+
+  # ═══ Brave startup ═════════════════════════════════════════════════════
+  # Brave restores the previous session on every launch and never prunes it,
+  # so the tab set only grows. The pref is unset — Brave's default is
+  # "continue where you left off", not Chromium's new-tab-page — and the
+  # profile confirms it fired: every entry in sessions.event_log carries
+  # restore_browser: true, and the newest Sessions/Tabs_* file had ~770
+  # navigation entries when this was written (2026-08-26).
+  #
+  #   jq -c '.session, [.sessions.event_log[] | select(.restore_browser)]' \
+  #     ~/.config/BraveSoftware/Brave-Origin/Default/Preferences
+  #
+  # RestoreOnStartup = 4 opens the fixed list below instead, which drops
+  # yesterday's pile. Nothing is lost — closed tabs stay in history.
+  #
+  # The binary carries both /etc/brave/policies and /etc/chromium/policies as
+  # compiled-in constants; /etc/brave is the brand dir this build is built
+  # under, so that is the one written here rather than trusting
+  # programs.chromium.extraOpts, which only ever writes /etc/chromium:
+  #
+  #   grep -aoE '/etc/[a-z]+/policies' \
+  #     "$(dirname "$(readlink -f "$(command -v brave-origin)")")/../opt/brave.com/brave-origin/brave"
+  #
+  # Which of the two actually loads is not provable from the strings alone —
+  # brave://policy after a restart shows RestoreOnStartup listed if it took.
+  #
+  # managed/ locks the setting and greys it out in brave://settings. That is
+  # the point — a knob that can be clicked back is how the pile returned.
+  # Move the file to policies/recommended/ to make it a default instead.
+  environment.etc."brave/policies/managed/nixos.json".text = builtins.toJSON {
+    RestoreOnStartup = 4;
+    RestoreOnStartupURLs = [
+      "https://mail.google.com"
+      "https://www.youtube.com"
+      "https://chatgpt.com"
+      "https://x.com"
+    ];
+  };
 }
