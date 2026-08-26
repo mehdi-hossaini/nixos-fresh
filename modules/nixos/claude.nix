@@ -211,6 +211,15 @@ let
     # if per-project styles are ever wanted, this moves back to settings.json.
     outputStyle = "Concise";
 
+    # Auto-memory keeps notes under ~/.claude/projects/<slug>/memory/ and reads them
+    # back into every session. It is off here rather than in ~/.claude/settings.json
+    # for the same reason as outputStyle above: it decides what reaches the context on
+    # every turn, which makes it a rule and not state, and law 4 puts rules in the
+    # repo. False means Claude neither reads nor writes that directory. The merged
+    # getter takes the policy tier's value ahead of the user's, so /config's own
+    # toggle cannot turn it back on.
+    autoMemoryEnabled = false;
+
     # Law 3. A forgotten -m now fails fast instead of hanging on a GUI window.
     # This does not reach jj's builtin DIFF editor; those forms are denied below.
     env = {
@@ -463,16 +472,21 @@ in
   # Claude's own tools run. It does not follow `direnv exec`, `devbox run`, or a
   # script that calls the same command a level down. It narrows the way in, it
   # does not seal it.
-  # outputStyle = "Concise" names a built-in that only exists from 2.1.237. An older
-  # claude-code ignores an unknown style and silently falls back to Default, so the
-  # setting would look applied while doing nothing. Fail the build instead.
+  # Two settings above name behaviour an older claude-code does not have: outputStyle
+  # = "Concise" is a built-in added in 2.1.237, and autoMemoryEnabled was read out of
+  # 2.1.238's own binary. An older release ignores an unknown setting silently, so the
+  # style would fall back to Default and auto-memory would come back on, both while
+  # still looking applied. Fail the build instead. 2.1.238 is the version the keys were
+  # verified against, not necessarily the first that had them — the floor is allowed to
+  # be one patch pessimistic, since being wrong the other way is the silent failure.
   assertions = [
     {
-      assertion = lib.versionAtLeast pkgs.claude-code.version "2.1.237";
+      assertion = lib.versionAtLeast pkgs.claude-code.version "2.1.238";
       message =
-        "claude.nix sets outputStyle = \"Concise\", a built-in added in claude-code "
-        + "2.1.237, but nixpkgs has ${pkgs.claude-code.version}. Update the nixpkgs "
-        + "input, or drop the setting until it lands.";
+        "claude.nix sets outputStyle = \"Concise\" and autoMemoryEnabled = false, "
+        + "both verified against claude-code 2.1.238, but nixpkgs has "
+        + "${pkgs.claude-code.version}. Update the nixpkgs input, or drop the "
+        + "settings until they land.";
     }
   ];
 

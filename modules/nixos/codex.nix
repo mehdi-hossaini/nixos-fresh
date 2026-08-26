@@ -190,10 +190,25 @@ let
 
   # Law 3, as far as this layer can carry it. The editor pins are environment,
   # and environment is not in requirements.toml's vocabulary — so they land in the
-  # defaults file, which the user can change mid-session. That makes this the one
-  # rule here that is a default rather than a wall, and it is worth saying rather
-  # than leaving to be discovered.
+  # defaults file, which the user can change mid-session. That makes them defaults
+  # rather than walls, and it is worth saying rather than leaving to be discovered.
+  # The memories switch below is the second, and lands here for its own reason.
   managedConfig = toml.generate "codex-managed-config.toml" {
+    # The mirror of claude.nix's autoMemoryEnabled = false. Codex spells it as a
+    # feature: `codex features list` reports `memories` and its effective state, and
+    # `[features] memories = false` beats a default-on — verified by flipping
+    # fast_mode, which IS on by default, in a scratch CODEX_HOME. It reads false
+    # today without this line, but that is the shipped default rather than a
+    # decision, and a default is exactly the thing that can change under a rebuild.
+    #
+    # Not in requirements.toml, which does have a `feature_requirements` table that
+    # would make this a wall. That table is read only from /etc/codex, so its value
+    # vocabulary cannot be exercised from a scratch CODEX_HOME, and an unknown
+    # feature key is ignored SILENTLY — a guessed spelling would read as enforced
+    # while doing nothing, and could not be watched going red on purpose. A default
+    # that is known to work beats a wall that might not. Move it if that changes.
+    features.memories = false;
+
     shell_environment_policy.set = {
       JJ_EDITOR = "false";
       GIT_EDITOR = "false";
