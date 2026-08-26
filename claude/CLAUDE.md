@@ -192,6 +192,13 @@ finding sooner, and note that it only sees tracked files — a new file still ha
 `git add`ed before the flake can fail on it. See the inventory's conventions for what
 the gate deliberately leaves out.
 
+The same hook runs **gitleaks** — a fifth of a second, so it is not the ten — on a wider
+set: `jj new`, `jj squash` and `jj split <paths>` as well. In jj the working copy is
+already a commit, so those verbs do not create one, they stop `@` from being amended and
+leave the content behind as `@-`. A secret is therefore permanent from that moment, not
+from the push, and a push-time scan of the working tree would no longer see it. Nothing
+is refused on a clean tree; the cost is the fifth of a second.
+
 **Commit as you go.** `jj split <paths>` separates concerns that live in different
 files and is safe — it takes filesets and only opens the diff editor with `-i`, a
 `--tool`, or no arguments at all. Two concerns inside *one* file cannot be separated

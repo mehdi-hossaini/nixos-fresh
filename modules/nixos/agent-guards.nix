@@ -160,7 +160,7 @@ rec {
   # not what the wall would have done.
   absenceNotes = {
     estopGuard = "There is no shared stop switch, so nothing outside your session can pause it mid-run.";
-    publishGate = "`jj commit` and `jj git push` are not gated on gitleaks and `nix flake check` — run both yourself before publishing.";
+    publishGate = "Nothing is gated on gitleaks or `nix flake check`: not `jj commit` and `jj git push`, and not the verbs that make working-copy content permanent (`jj new`, `jj squash`, `jj split <paths>`). Run both yourself before publishing, and remember a secret reaches `@-` the moment one of those runs, not at push.";
     colocatedCommitGuard = "`git commit` in a colocated repo is not caught for you; `ls -d .jj .git` is the check to run first.";
     untrackedNixGuard = "A referenced-but-untracked `.nix` file is not caught before the flake fails on it — `git add` a new file yourself.";
     commandShapeGuard = "The law-1 command shapes are not refused for you.";
@@ -298,27 +298,54 @@ rec {
   };
 
   # The pre-commit gate jj cannot host: jj has no hook support and bypasses
-  # .git/hooks, so both checks run from PreToolUse on `jj commit` and
-  # `jj git push`. Only fires when the working directory is /etc/nixos.
+  # .git/hooks, so both checks run from PreToolUse. Only fires when the working
+  # directory is /etc/nixos.
   #
-  # Two checks, cheapest first so a secret is caught before ten seconds of nix
-  # evaluation rather than after.
+  # TWO TIERS, and the split is the whole design. The cheap check runs on every
+  # verb that makes working-copy content permanent; the ten-second one runs only
+  # on the two that publish.
+  #
+  # The induction this gate rests on used to be stated and false. The claim was
+  # "every commit passes through this gate as a working tree first, so history
+  # stays clean by induction from a clean start" — true only if every route from
+  # working copy to permanent commit is gated, and only two were. In jj the
+  # working copy IS a commit, so a verb does not CREATE one: it stops `@` from
+  # being amended further and leaves the content behind as `@-`. `jj new`,
+  # `jj squash` and `jj split <paths>` all do that, and all three were outside the
+  # trigger. The escape needs no cleverness: write a secret, `jj new`, delete the
+  # secret, push — and the push-time `gitleaks dir` scans a working tree the
+  # secret is no longer in, while `@-` carries it upstream. `jj commit` was denied
+  # at step two all along; `jj new` was not, and it is the verb the workflow types
+  # most.
+  #
+  # Fixed at the induction rather than at `jj new`. Adding one verb to the trigger
+  # would leave `jj squash` and `jj split` doing the same thing, and the next verb
+  # after those — the rule is "this makes working-copy content permanent", so the
+  # trigger names that set rather than the symptom that exposed it.
+  #
+  # Scanning history at push time was the other candidate and is worse here.
+  # `--all --not --remotes` looked precise and is not: a colocated repo carries a
+  # git commit for every jj operation — ~250 of them against 125 real ones on this
+  # machine — none of which `jj git push` publishes, since it pushes bookmarks.
+  # Scanning them means going red over content that cannot reach the remote, which
+  # is a gate nobody can clear rather than a wall.
   #
   # gitleaks was installed and inventoried all along — tools.json even said to run
   # it before pushing — and nothing ran it. check-conventions.sh scans with a
   # hand-written four-pattern regex aimed at the shapes that matter here (private
   # keys, age keys, $6$/$y$ hashes, quoted secret assignments); that stays, because
   # it is targeted at this repo's actual risk. gitleaks adds ~150 rules for the
-  # cloud tokens and PATs a pasted example brings in. 0.08s over the whole tree,
-  # measured 2026-08-22, so there is no reason for it not to sit here.
+  # cloud tokens and PATs a pasted example brings in. 0.22s over the whole tree,
+  # measured 2026-08-26 as the median of three — the 0.08s this comment claimed
+  # before was measured on a smaller tree and never re-taken, which is the rot the
+  # palette contrast check exists to prevent and prose does not get. Still far
+  # below the flake check, which is what makes it affordable on `jj new`.
   #
-  # It scans the working tree, not history: every commit passes through this gate
-  # as a working tree first, so history stays clean by induction from a clean
-  # start (`gitleaks git /etc/nixos` was clean when this landed). For a one-off
-  # audit of history itself, run that command by hand.
+  # For a one-off audit of history itself, `gitleaks git /etc/nixos` — 0.21s over
+  # all 125 commits, and clean when this landed.
   publishGate = writeGuard "${a.prefix}-gate-publish" ''
     ${guardPreamble}
-    ${requires ''"jj commit"* | "jj git push"*''}
+    ${requires ''"jj commit"* | "jj git push"* | "jj new"* | "jj squash"* | "jj split"*''}
         case "$cwd" in
         /etc/nixos | /etc/nixos/*) ;;
         # Total, not a shrug: a cwd outside this repo is definitely not this
@@ -336,6 +363,13 @@ rec {
     $out"
         fi
 
+        # Tier two. `requires` again, with the narrower pattern: everything above
+        # ran for all five verbs, and what follows is for the two that publish.
+        # Calling it twice rather than hand-rolling a second matcher keeps ONE
+        # segment-anchored matcher in this file — the copies of that parser are
+        # exactly what the guardPreamble comment records as the bug that cost the
+        # most. `jj new` and its siblings exit here, having paid 0.22s.
+    ${requires ''"jj commit"* | "jj git push"*''}
         # Absolute, like the gitleaks call above it. Bare, this evaluated the HOOK
         # PROCESS's working directory rather than the $cwd just validated: from a
         # session whose cwd was not this repo it denied every commit with "does not
@@ -350,12 +384,17 @@ rec {
     offTrigger = [
       "jj commit"
       "jj git push"
+      "jj new"
+      "jj squash"
+      "jj split"
     ];
-    # 369 recorded commands open a segment with one of those, and replaying each
-    # would run gitleaks and a full `nix flake check` for real — half an hour to
-    # assert what the routes below assert in seconds. The off-trigger remainder
-    # still runs, and the harness prints the count it dropped rather than leaving
-    # a partial replay looking total.
+    # Recorded commands opening a segment with one of those would run gitleaks —
+    # and, for the two publishing verbs, a full `nix flake check` — for real, which
+    # is half an hour to assert what the routes below assert in seconds. The
+    # off-trigger remainder still runs, and the harness prints the count it dropped
+    # rather than leaving a partial replay looking total. No count is written here:
+    # it was 369 when only two verbs triggered, and a number in a comment that
+    # nothing derives is the rot this file spends its length arguing against.
     skipOnTrigger = true;
     routes = [
       # The anchoring regression: merely NAMING the phrase is not performing it.
@@ -377,6 +416,22 @@ rec {
       }
       {
         command = "jj git push";
+        want = "allow";
+      }
+      # The three verbs the induction was missing. They must be ALLOWED on a clean
+      # tree — the point is that they now pay gitleaks, not that they are refused —
+      # and each is the working-copy-to-permanent route that `jj commit` was
+      # already gated on.
+      {
+        command = "jj new";
+        want = "allow";
+      }
+      {
+        command = "jj squash";
+        want = "allow";
+      }
+      {
+        command = "jj split flake.nix";
         want = "allow";
       }
     ];
