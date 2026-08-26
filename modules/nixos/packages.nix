@@ -18,7 +18,41 @@
 
   environment.systemPackages = with pkgs; [
     # Browser, terminal, editor
-    brave-origin
+    #
+    # --enable-features exposes the Tree Tab setting without a click in
+    # brave://flags, which writes to the profile's Local State and is
+    # therefore state rather than a declaration. The feature name is the
+    # binary's, not a guess:
+    #
+    #   grep -ao 'BraveTreeTab' \
+    #     "$(dirname "$(readlink -f "$(command -v brave-origin)")")/../opt/brave.com/brave-origin/brave"
+    #
+    # The matching toggle, brave.tabs.tree_tabs_enabled, is NOT declared and
+    # cannot be: it lives in Default/Preferences, which Brave rewrites on
+    # every run, so nix would be fighting the browser for a file it owns.
+    # It is unprotected (absent from protection.macs), so the one click
+    # sticks, and .config is persisted — law 4, state stays state.
+    #
+    # The two video-acceleration features are REPEATED here rather than left
+    # to the package. Chromium stores switches in a map, so a second
+    # --enable-features overwrites the first instead of merging, and
+    # commandLineArgs lands last on the wrapper's exec line — a bare
+    # BraveTreeTab would therefore have silently turned hardware video
+    # decode off, on a machine whose startup tabs include YouTube. The list
+    # must stay a superset of what the package injects; re-read it from the
+    # built wrapper after a nixpkgs bump, NOT from memory (law 6):
+    #
+    #   grep -ao 'enable-features=[A-Za-z,]*' \
+    #     "$(readlink -f "$(command -v brave-origin)")"
+    #
+    # enableVideoAcceleration is deliberately left true: turning it off would
+    # also drop UseChromeOSDirectVideoDecoder from --disable-features, which
+    # nixpkgs disables to keep VAAPI working (brave-browser issue 20935).
+    (brave-origin.override {
+      commandLineArgs = [
+        "--enable-features=AcceleratedVideoDecodeLinuxGL,AcceleratedVideoEncoder,BraveTreeTab"
+      ];
+    })
     alacritty
     # Alacritty has no tabs by design, so the multiplexer is not optional here —
     # without it you get one OS window per task.
