@@ -98,7 +98,7 @@ let
       map (s: if s == "" then "" else lib.escapeShellArg s) (lib.splitString "*" p)
     );
 
-  denyGuard = pkgs.writeShellScript "codex-guard-denies" ''
+  denyGuard = guards.writeGuard "codex-guard-denies" ''
     ${guards.guardPreamble}
     deny() {
       ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
@@ -110,7 +110,17 @@ let
     # which meant the code deciding whether a deny fires existed twice and could be
     # corrected in one place only. The trimming rule and the bug behind it are
     # written down there.
+    #
+    # SC2016 is disabled for the arms below and nowhere else. Every deny reason is
+    # prose that quotes commands in markdown backticks — "`nh os build`", "`sg`" —
+    # and arrives here through lib.escapeShellArg, so shellcheck sees a `$` or a
+    # backtick inside single quotes and offers to make it expand. Expanding is
+    # precisely the bug: these strings are the text a denied session reads, and a
+    # guard whose explanation ran as a command would be a hole in the wall that
+    # explains it. Scoped to the case rather than to the file, so a real SC2016 in
+    # the surrounding loop is still caught.
     while IFS= read -r seg; do
+      # shellcheck disable=SC2016
       case "$seg" in
       ${lib.concatMapStringsSep "\n      " (
         g:
@@ -127,7 +137,7 @@ let
   # file tool it has; Codex has no file permission at all, so the same rule has to
   # read apply_patch's own command text. Broader than the path glob deliberately —
   # see agent-denies.nix.
-  applyPatchGuard = pkgs.writeShellScript "codex-guard-apply-patch" ''
+  applyPatchGuard = guards.writeGuard "codex-guard-apply-patch" ''
     set -u
     ${escalateFn}
     input=$(cat)

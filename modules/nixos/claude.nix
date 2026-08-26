@@ -135,7 +135,7 @@ let
   # and useless for "this is blocked on you" — the second is precisely the one
   # you are away from the screen for. critical stays on screen until dismissed.
   notifySend = "${pkgs.libnotify}/bin/notify-send";
-  notifyDesktop = pkgs.writeShellScript "claude-notify-desktop" ''
+  notifyDesktop = guards.writeGuard "claude-notify-desktop" ''
     set -u
     payload=$(cat)
 

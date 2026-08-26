@@ -25,6 +25,49 @@
   a,
 }:
 rec {
+  # `pkgs.writeShellScript` runs `stdenv.shellDryRun` and nothing else — `bash -n`,
+  # a syntax check rather than a lint. So the guards below were the only shell in
+  # this repo that never met shellcheck: the flake gate covers the tracked `*.sh`
+  # files, `shellcheckGate` further down covers any `*.sh` an agent writes, and the
+  # ~900 lines actually doing the enforcing fell between them. That is this repo's
+  # own signature failure aimed at itself — a wall that is trusted and is not there
+  # — and it lands harder here than anywhere else, because what shellcheck catches
+  # in a guard (an unquoted expansion, a subshell that loses its variable) is the
+  # class that makes one fail OPEN rather than loudly.
+  #
+  # `writeShellApplication` is the built-in that shellchecks, and it is the wrong
+  # tool: it prepends `set -euo pipefail`, and several guards here are written
+  # against its absence. `conventionsCheck` reads `rc=$?` from a command that is
+  # expected to fail and `sessionStartCheck` carries on past one — under `set -e`
+  # both exit before they decide anything, which turns a report into silence. So
+  # this keeps writeShellScript's shape verbatim and only adds the lint to its
+  # checkPhase, shellDryRun included rather than replaced.
+  #
+  # Default severity, for the reason `shellcheckGate` gives about its own: the
+  # commit gate runs shellcheck with defaults, so a quieter setting here would pass
+  # a script that fails the flake ten minutes later.
+  #
+  # This is a BUILD-time gate, which means `nh os build` is what fires it and `nix
+  # flake check` is not — evaluation creates these derivations without realising
+  # them. That is the right seam rather than a gap to close later: law 1 already
+  # ends every change here at a clean `nh os build`, so a guard cannot reach the
+  # hand-over unlinted, and a second copy of the check in `checks` would be a
+  # second place deciding what "a guard is clean" means.
+  writeGuard =
+    name: text:
+    pkgs.writeTextFile {
+      inherit name;
+      executable = true;
+      text = ''
+        #!${pkgs.runtimeShell}
+        ${text}
+      '';
+      checkPhase = ''
+        ${pkgs.stdenv.shellDryRun} "$target"
+        ${pkgs.shellcheck}/bin/shellcheck "$target"
+      '';
+    };
+
   guardPreamble = ''
     set -u
     ${a.escalateFn}
@@ -51,8 +94,14 @@ rec {
     # pattern never matched it. The deny held for `jj log && jj split` and not for
     # the reverse, which is the ordering that happened to get tested. Trim both
     # ends. Empty segments are dropped so a caller never has to check for them.
+    #
+    # One newline in SET2, not four: tr pads a short SET2 by repeating its last
+    # character, so the two forms are identical (verified, not assumed). The
+    # spelled-out version reads as clearer and is what shellcheck's SC2020 fires
+    # on — it cannot tell deliberate padding from a set written by mistake, and
+    # the guards are shellchecked at build time now (see writeGuard above).
     segments() {
-      printf '%s' "$cmd" | tr ';|&\n' '\n\n\n\n' |
+      printf '%s' "$cmd" | tr ';|&\n' '\n' |
         sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
     }
   '';
@@ -187,7 +236,7 @@ rec {
   # the person who would recognise it is the one who set it hours earlier.
   estopSentinel = "\${XDG_RUNTIME_DIR:-/tmp}/agent-estop";
 
-  estopGuard = pkgs.writeShellScript "${a.prefix}-guard-estop" ''
+  estopGuard = writeGuard "${a.prefix}-guard-estop" ''
     set -u
     # Drained, not parsed. This is the only guard whose decision does not depend
     # on the payload at all, which makes it total by construction — there is no
@@ -267,7 +316,7 @@ rec {
   # as a working tree first, so history stays clean by induction from a clean
   # start (`gitleaks git /etc/nixos` was clean when this landed). For a one-off
   # audit of history itself, run that command by hand.
-  publishGate = pkgs.writeShellScript "${a.prefix}-gate-publish" ''
+  publishGate = writeGuard "${a.prefix}-gate-publish" ''
     ${guardPreamble}
     ${requires ''"jj commit"* | "jj git push"*''}
         case "$cwd" in
@@ -336,7 +385,7 @@ rec {
   # `git commit` is correct in a git-only repo and only destructive in a
   # colocated one, so this cannot be a flat deny pattern. It looks for .jj in the
   # working directory and denies on that.
-  colocatedCommitGuard = pkgs.writeShellScript "${a.prefix}-guard-git-commit" ''
+  colocatedCommitGuard = writeGuard "${a.prefix}-guard-git-commit" ''
     ${guardPreamble}
     ${requires ''"git commit"*''}
     # Total: .jj either is or is not there, and the preamble guaranteed a cwd.
@@ -399,7 +448,7 @@ rec {
   # startup rather than a thing to run when you remember. Quiet on success:
   # nothing is printed when 29 assertions hold, so the cost is the runtime and no
   # context at all.
-  sessionStartCheck = pkgs.writeShellScript "${a.prefix}-session-start-check" ''
+  sessionStartCheck = writeGuard "${a.prefix}-session-start-check" ''
     set -u
     out=$(bash ${a.conventionsScript} 2>&1) && exit 0
     out=$(printf '%s\n' "$out" | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'FAIL|failed$')
@@ -455,7 +504,7 @@ rec {
   # of an unreadable payload is a marker that is not written, which handoffOnStop
   # and sessionStartContext both report as "nothing pending" — an omission, and
   # the honest answer for a hook with no way to ask.
-  recordBuild = pkgs.writeShellScript "${a.prefix}-record-build" ''
+  recordBuild = writeGuard "${a.prefix}-record-build" ''
     set -u
     cmd=$(${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end' 2>/dev/null) || exit 0
     case "$cmd" in
@@ -463,14 +512,14 @@ rec {
     *) exit 0 ;;
     esac
     p=$(nix eval --raw /etc/nixos#nixosConfigurations."$(hostname)".config.system.build.toplevel.outPath 2>/dev/null) || exit 0
-    [ -n "$p" ] && printf '%s' "$p" > ${builtMarker}
+    [ -n "$p" ] && printf '%s' "$p" > "${builtMarker}"
     exit 0
   '';
 
-  handoffOnStop = pkgs.writeShellScript "${a.prefix}-handoff-on-stop" ''
+  handoffOnStop = writeGuard "${a.prefix}-handoff-on-stop" ''
     set -u
-    [ -r ${builtMarker} ] || exit 0
-    built=$(cat ${builtMarker}) || exit 0
+    [ -r "${builtMarker}" ] || exit 0
+    built=$(cat "${builtMarker}") || exit 0
     running=$(readlink -f /run/current-system 2>/dev/null) || exit 0
     [ "$built" != "$running" ] || exit 0
     ${jq} -n --arg b "$built" '{
@@ -511,7 +560,7 @@ rec {
   # to say less: every probe that fails is dropped and the session starts on what
   # was learned. A context hook that can abort a session start is worse than one
   # that occasionally has nothing to add.
-  sessionStartContext = pkgs.writeShellScript "${a.prefix}-session-start-context" ''
+  sessionStartContext = writeGuard "${a.prefix}-session-start-context" ''
     set -u
     input=$(cat)
     cwd=$(printf '%s' "$input" | ${jq} -r '.cwd // empty' 2>/dev/null) || exit 0
@@ -548,8 +597,8 @@ rec {
         say "- Unresolved conflicts in: $conflicted. Repo-wide all-clear is an empty \`jj log -r 'conflicts()'\`; start with \`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf\`."
     fi
 
-    if [ -r ${builtMarker} ]; then
-      built=$(cat ${builtMarker} 2>/dev/null) || built=""
+    if [ -r "${builtMarker}" ]; then
+      built=$(cat "${builtMarker}" 2>/dev/null) || built=""
       running=$(readlink -f /run/current-system 2>/dev/null) || running=""
       [ -n "$built" ] && [ -n "$running" ] && [ "$built" != "$running" ] &&
         say "- A NixOS configuration was built in an earlier session and never switched. Activation is the user's (law 3): nh os switch /etc/nixos"
@@ -580,7 +629,7 @@ rec {
   # would pass a file that fails ten minutes later. Verified 2026-08-22: both
   # tracked shell files are clean at default severity with -x.
   # exit 2 is what feeds the findings back into the conversation.
-  shellcheckGate = pkgs.writeShellScript "${a.prefix}-gate-shellcheck" ''
+  shellcheckGate = writeGuard "${a.prefix}-gate-shellcheck" ''
     set -u
     f=$(${jq} -r '.tool_input.file_path // empty')
     case "$f" in
@@ -596,7 +645,7 @@ rec {
   # After a rebuild the machine may no longer match what the inventory and
   # ${a.rulesFile} claim. This is the only mechanism that notices, and it reports into
   # the conversation rather than into a log nobody reads.
-  conventionsCheck = pkgs.writeShellScript "${a.prefix}-check-conventions" ''
+  conventionsCheck = writeGuard "${a.prefix}-check-conventions" ''
     set -u
     out=$(bash ${a.conventionsScript} 2>&1); rc=$?
     [ $rc -eq 0 ] && exit 0
@@ -624,7 +673,7 @@ rec {
   # match on the raw payload before any fork. `>` is common enough that the
   # redirect arm pays a jq on many calls; measured at a few milliseconds against
   # a 5s timeout, which is the right trade for the one irreversible rule here.
-  commandShapeGuard = pkgs.writeShellScript "${a.prefix}-guard-command-shape" ''
+  commandShapeGuard = writeGuard "${a.prefix}-guard-command-shape" ''
     set -u
     ${a.escalateFn}
     input=$(cat)
@@ -756,7 +805,7 @@ rec {
   # file but not the fix, and the fix is non-obvious in a colocated repo, where
   # jj already considers the file tracked and only the git index is behind. So
   # this denies early and says the command to run.
-  untrackedNixGuard = pkgs.writeShellScript "${a.prefix}-guard-untracked-nix" ''
+  untrackedNixGuard = writeGuard "${a.prefix}-guard-untracked-nix" ''
     ${guardPreamble}
     ${requires ''"nh os build"* | "nix flake check"*''}
     case "$cwd" in
@@ -845,7 +894,7 @@ rec {
   # the second exit, and it is the one that gets forgotten. A guard that denies its
   # own remedy is broken, which is why replay-guards.sh asserts that every route
   # this message names is a route this guard allows.
-  spillPaginationGuard = pkgs.writeShellScript "${a.prefix}-guard-spill-pagination" ''
+  spillPaginationGuard = writeGuard "${a.prefix}-guard-spill-pagination" ''
     set -u
     ${a.escalateFn}
     input=$(cat)
