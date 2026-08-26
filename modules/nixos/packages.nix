@@ -21,11 +21,8 @@
     #
     # --enable-features exposes the Tree Tab setting without a click in
     # brave://flags, which writes to the profile's Local State and is
-    # therefore state rather than a declaration. The feature name is the
-    # binary's, not a guess:
-    #
-    #   grep -ao 'BraveTreeTab' \
-    #     "$(dirname "$(readlink -f "$(command -v brave-origin)")")/../opt/brave.com/brave-origin/brave"
+    # therefore state rather than a declaration. Feature name read out of the
+    # binary, not guessed.
     #
     # The matching toggle, brave.tabs.tree_tabs_enabled, is NOT declared and
     # cannot be: it lives in Default/Preferences, which Brave rewrites on
@@ -180,16 +177,9 @@
   # RestoreOnStartup = 4 opens the fixed list below instead, which drops
   # yesterday's pile. Nothing is lost — closed tabs stay in history.
   #
-  # The binary carries both /etc/brave/policies and /etc/chromium/policies as
-  # compiled-in constants; /etc/brave is the brand dir this build is built
-  # under, so that is the one written here rather than trusting
-  # programs.chromium.extraOpts, which only ever writes /etc/chromium:
-  #
-  #   grep -aoE '/etc/[a-z]+/policies' \
-  #     "$(dirname "$(readlink -f "$(command -v brave-origin)")")/../opt/brave.com/brave-origin/brave"
-  #
-  # Which of the two actually loads is not provable from the strings alone —
-  # brave://policy after a restart shows RestoreOnStartup listed if it took.
+  # /etc/brave, not /etc/chromium — programs.chromium.extraOpts writes the
+  # wrong dir. The binary carries both paths, so which one loads is not
+  # provable from it; brave://policy after a restart is what settles that.
   #
   # managed/ locks the setting and greys it out in brave://settings. That is
   # the point — a knob that can be clicked back is how the pile returned.

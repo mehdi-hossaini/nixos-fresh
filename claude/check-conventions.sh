@@ -219,17 +219,11 @@ fi
 # nixpkgs attribute — plasma-manager's programs.plasma is not a tool and has no
 # entry to find — so covering it would need an exemption list, which is the shape
 # this whole section is trying to get rid of.
-# An .override argument set is not a package list, and the flat tokeniser this
-# started as could not tell the difference. `(brave-origin.override {
-# commandLineArgs = [ "--enable-features=BraveTreeTab" ]; })` broke it twice
-# over: commandLineArgs was reported as an uninventoried package, and the `];`
-# closing the override's own list ended the scan early, so every package below
-# brave silently stopped being checked at all. The second failure is the one
-# that matters — it asserts less while still printing ok.
-#
-# So: track brace depth, emit only at depth 0, and end the list only on a `];`
-# seen at depth 0. `.override`/`.overrideAttrs` is stripped so the base
-# attribute name survives its wrapper, and parens are whitespace.
+# An .override argument set is not a package list. The flat tokeniser this
+# started as read commandLineArgs as a package, and worse, the `];` closing the
+# override's own list ended the scan — every package below it silently stopped
+# being checked while the line still printed ok. Track brace depth: emit at
+# depth 0, end the list only on a `];` seen there.
 declared=$(awk '
   /^[[:space:]]*environment\.systemPackages[[:space:]]*=/ { inlist = 1 }
   inlist {
