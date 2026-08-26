@@ -228,6 +228,100 @@ rec {
     }'
   '';
 
+  # The other half of law 6, and the counterpart to autoMemoryEnabled = false in
+  # claude.nix: if nothing here is known from memory, the answer is not to
+  # remember harder but to probe at the start and say what was found.
+  #
+  # ${a.rulesFile} names three facts a session is told to establish for itself and
+  # then spends a command on, every time, or skips and guesses at:
+  #
+  #   - which of the three version-control cases this directory is
+  #     ("`ls -d .jj .git` answers it in one command" — so run it once, here)
+  #   - whether the repo is carrying unresolved conflicts
+  #   - whether direnv has fired, which in a non-interactive agent shell it has not
+  #
+  # The fourth is not in ${a.rulesFile} at all: handoffOnStop above reports an
+  # unswitched build at the END of the session that built it, and says nothing to
+  # the NEXT one. The marker outlives the session, so the same comparison at
+  # startup closes that gap for free.
+  #
+  # Shape borrowed from langchain-ai/deepagents' LocalContextMiddleware, including
+  # the reason this is a SessionStart hook and not a per-turn one. Their comment is
+  # the argument: volatile sections "would otherwise churn the system prompt and
+  # reduce provider prompt-cache hits across a conversation". Git status and
+  # conflict state are exactly that, so this runs once and the injected prefix
+  # stays byte-identical for the rest of the session. Their script fans eight
+  # sections out into parallel subshells; four cheap ones do not earn a mktemp and
+  # a wait, so this stays serial — 0.03s median over five runs in /etc/nixos, with
+  # the jj conflicts query included, measured 2026-08-26.
+  #
+  # No guardPreamble and no escalate, unlike every guard above. Those decide
+  # whether a command runs, so "cannot tell" has to become a question. This
+  # decides nothing and returns no permissionDecision, so its undecidable case is
+  # to say less: every probe that fails is dropped and the session starts on what
+  # was learned. A context hook that can abort a session start is worse than one
+  # that occasionally has nothing to add.
+  sessionStartContext = pkgs.writeShellScript "${a.prefix}-session-start-context" ''
+    set -u
+    input=$(cat)
+    cwd=$(printf '%s' "$input" | ${jq} -r '.cwd // empty' 2>/dev/null) || exit 0
+    [ -n "$cwd" ] && [ -d "$cwd" ] || exit 0
+    cd "$cwd" 2>/dev/null || exit 0
+
+    out=""
+    say() { out="$out$1"$'\n'; }
+
+    # The repo root, not $cwd: .jj and .git sit at the top, and a session opened
+    # in a subdirectory would otherwise be told "no version control" about a repo
+    # it is standing inside. git resolves it for both colocated and git-only
+    # cases; the fallback only matters for the two rows that have no .git.
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || root=""
+    [ -n "$root" ] || root=$cwd
+    if [ -d "$root/.jj" ] && [ -d "$root/.git" ]; then
+      say "- Version control: colocated, root $root. jj for history; git commit is denied here."
+    elif [ -d "$root/.git" ]; then
+      say "- Version control: git-only, root $root. Plain git commit is correct and loses nothing."
+    elif [ -d "$root/.jj" ]; then
+      say "- Version control: .jj without .git, root $root. Not colocated, so coworkers and gh see nothing."
+    else
+      say "- Version control: none at or above $cwd. There is no undo — say so before editing anything."
+    fi
+
+    # --ignore-working-copy because a hook must not snapshot: without it this
+    # writes an operation-log entry before the session has done anything, and
+    # races the working copy the user is about to touch.
+    if [ -d "$root/.jj" ] && command -v jj >/dev/null 2>&1; then
+      conflicted=$(jj log --ignore-working-copy --no-graph -r 'conflicts()' \
+        -T 'change_id.short() ++ " "' 2>/dev/null) || conflicted=""
+      conflicted=''${conflicted% }
+      [ -n "$conflicted" ] &&
+        say "- Unresolved conflicts in: $conflicted. Repo-wide all-clear is an empty \`jj log -r 'conflicts()'\`; start with \`nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf\`."
+    fi
+
+    if [ -r ${builtMarker} ]; then
+      built=$(cat ${builtMarker} 2>/dev/null) || built=""
+      running=$(readlink -f /run/current-system 2>/dev/null) || running=""
+      [ -n "$built" ] && [ -n "$running" ] && [ "$built" != "$running" ] &&
+        say "- A NixOS configuration was built in an earlier session and never switched. Activation is the user's (law 3): nh os switch /etc/nixos"
+    fi
+
+    # DIRENV_DIR is set by the hook direnv installs in an interactive shell. An
+    # agent shell is not one, so an unset value here is the normal case and the
+    # whole point: the environment exists and has not been entered.
+    if [ -e "$cwd/.envrc" ] || [ -e "$cwd/devenv.nix" ]; then
+      [ -z "''${DIRENV_DIR:-}" ] &&
+        say "- This directory declares a devenv/direnv environment that is NOT loaded in an agent shell. Prefix project tools: \`direnv exec . <cmd>\`."
+    fi
+
+    [ -n "$out" ] || exit 0
+    ${jq} -n --arg o "$out" '{
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: ("Machine state probed at session start rather than remembered (law 6):\n" + $o)
+      }
+    }'
+  '';
+
   # The hookable slice of "shellcheck every non-trivial bash you write": a file
   # written through Write or Edit is visible to a hook, so it gets linted the
   # moment it lands. Bash typed inline into a Bash call is not, and stays

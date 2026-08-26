@@ -103,6 +103,7 @@ let
     publishGate
     colocatedCommitGuard
     sessionStartCheck
+    sessionStartContext
     recordBuild
     handoffOnStop
     shellcheckGate
@@ -317,6 +318,19 @@ let
               command = "${sessionStartCheck}";
               timeout = 30;
               statusMessage = "Checking machine conventions";
+            }
+            # A second hook rather than a branch inside the first, for the reason
+            # spillPaginationGuard is not a fourth arm of commandShapeGuard: that
+            # one answers "are the instructions still true", this one answers
+            # "what is true here that they cannot state". Claude Code runs every
+            # matching SessionStart hook and concatenates their additionalContext,
+            # so keeping them apart also makes each one's failure its own — a
+            # broken probe cannot swallow a stale-conventions warning.
+            {
+              type = "command";
+              command = "${sessionStartContext}";
+              timeout = 15;
+              statusMessage = "Probing machine state";
             }
           ];
         }
