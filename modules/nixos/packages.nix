@@ -30,8 +30,12 @@
     # do: closing the window ends the agent with it.
     #
     # Packaged in nixpkgs, so law 1 is satisfiable without the `curl | sh` its
-    # README leads with. 0.8.0 here against 0.8.2 upstream — the lag is nixpkgs',
-    # not a pin, and nothing below depends on the difference.
+    # README leads with. 0.8.2 as of 2026-08-26, which is upstream's current — the
+    # 0.8.0 lag this comment recorded was nixpkgs' and has since closed. No version
+    # is pinned here and nothing below depends on one, so `herdr --version` is the
+    # answer rather than this line (law 6); it is kept only because
+    # impermanence.nix cites a specific release's src/worktree.rs and the two
+    # should not silently disagree about which release that is.
     #
     # Its config and state land in ~/.config/herdr and ~/.local/state/herdr,
     # both already persisted wholesale. Its *worktrees* default to ~/.herdr,

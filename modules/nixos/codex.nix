@@ -71,13 +71,29 @@ let
       # about the machine, not about Claude, and reaching through the other
       # agent's home directory would make this depend on that symlink existing.
       conventionsScript = "${../../claude/check-conventions.sh}";
-      # Codex has no `tool-results` path — 0 occurrences in the 0.147.0 binary,
-      # against 60 for `output_spill`. Both are matched so the guard is not simply
-      # inert, but the second has NOT been seen in a real payload, which is why
-      # AGENTS.md calls this rule best-effort rather than enforced. A list rather
-      # than a case pattern, because agent-guards.nix builds the pattern from it
-      # AND declares it as the guard's offTrigger — two facts that must not be
-      # able to disagree about what this guard is even about.
+      # Codex has no `tool-results` path — 0 occurrences against 1 for
+      # `output_spill`, in codex 0.149.0:
+      #
+      #   grep -aoh output_spill $(dirname $(readlink -f $(command -v codex)))/logs_client | wc -l
+      #
+      # The command is written down because the previous figures could not be
+      # reproduced without it. This said "0 against 60 for `output_spill`" in
+      # 0.147.0 and named neither the binary nor the tool, and the package ships
+      # three: a 17K `codex` launcher, `codex-code-mode-host`, and `logs_client`,
+      # which is the one carrying `apply_patch` and `exec_command` and therefore
+      # the one worth grepping. A count taken from the wrong file reads exactly
+      # like a count taken from the right one. `strings` is not on PATH here
+      # either (law 2), so `grep -a` is the tool, and a `strings` invocation that
+      # never ran returns nothing — which reads as a measured zero.
+      #
+      # 60 to 1 is a real drop and not just a re-measurement, so treat the second
+      # trigger as thin rather than sound. It still appears, so the guard is not
+      # inert, but it has NEVER been seen in a real Codex payload — which is why
+      # AGENTS.md calls this rule best-effort rather than enforced, and why that
+      # wording should stay until one is observed. A list rather than a case
+      # pattern, because agent-guards.nix builds the pattern from it AND declares
+      # it as the guard's offTrigger — two facts that must not be able to disagree
+      # about what this guard is even about.
       spillTriggers = [
         "tool-results/"
         "output_spill"
@@ -270,7 +286,7 @@ let
     # this file can be, and every Bash call reaches the script. recordBuild now
     # re-establishes its own trigger from tool_input.command — the same fix the
     # `requires` comment in agent-guards.nix argues for, and not a stylistic one:
-    # the nix eval it guards is 6.2s on this machine, which unguarded is 6.2s added
+    # the nix eval it guards is 6.4s on this machine, which unguarded is 6.4s added
     # to every `ls` Codex runs.
     #
     # Same tool-name matcher as PreToolUse above, for the same reason: Codex

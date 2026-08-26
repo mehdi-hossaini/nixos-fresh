@@ -60,7 +60,8 @@ let
   # The VALUE is "ask", and the word is load-bearing. This function said
   # "escalate" from the day it was written, and claude-code does not accept that
   # word: 2.1.234 validates permissionDecision against allow/deny/ask/defer at
-  # the schema layer and downgrades output that fails it to plain text — no
+  # the schema layer — still exactly that set on 2.1.238, re-read 2026-08-26 —
+  # and downgrades output that fails it to plain text — no
   # decision at all. Every "could not tell" was therefore a silent fall-through
   # to the ordinary permission flow, which is the exact hole this function
   # exists to close, in the one path built to be never silently wrong. Found
@@ -176,8 +177,9 @@ let
   '';
 
   # One guard, every spelling of its trigger. `if` runs through the permission
-  # -rule matcher — verified against 2.1.234, whose if-predicate is built from
-  # the same preparePermissionMatcher the permission rules use — so a trailing
+  # -rule matcher — verified against 2.1.234 and still present on 2.1.238, whose
+  # if-predicate is built from the same preparePermissionMatcher the permission
+  # rules use — so a trailing
   # " *" does NOT match the bare command, the exact finding agent-denies.nix
   # records for the deny patterns. That finding was applied to the denies on
   # 2026-08-24 and not here: bare `jj git push` — the form CLAUDE.md's own

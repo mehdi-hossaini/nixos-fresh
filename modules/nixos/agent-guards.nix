@@ -499,10 +499,20 @@ rec {
   # the mechanism that would have said so was waiting for a trigger that never
   # came.
   #
-  # 0.29s measured 2026-08-22, which is what makes this affordable at every
-  # startup rather than a thing to run when you remember. Quiet on success:
-  # nothing is printed when 29 assertions hold, so the cost is the runtime and no
-  # context at all.
+  # 0.47s, which is what makes this affordable at every startup rather than a
+  # thing to run when you remember. Quiet on success: nothing is printed when the
+  # assertions hold, so the cost is the runtime and no context at all.
+  #
+  #   hyperfine -N 'bash /etc/nixos/claude/check-conventions.sh'
+  #
+  # The command is written down because the number without it was not
+  # reproducible: this said 0.29s over 29 assertions, measured 2026-08-22, and by
+  # 2026-08-26 it was 0.47s over 37 — the script had grown eight assertions and
+  # nothing re-took the figure. Neither number was ever load-bearing (both are far
+  # under a second), but "0.29s" read as current when it was a fossil, and the
+  # count read as a fact when it was a snapshot. Re-run the line above rather than
+  # trusting either; the assertion count is deliberately no longer written here,
+  # since `check-conventions.sh` prints it and a second copy is what went stale.
   sessionStartCheck = writeGuard "${a.prefix}-session-start-check" ''
     set -u
     out=$(bash ${a.conventionsScript} 2>&1) && exit 0
@@ -549,7 +559,7 @@ rec {
   # the same reason `requires` above gives: claude.nix can narrow this to
   # `Bash(nh os build*)` before the fork, and codex.nix has no per-hook `if` at
   # all. Ported unguarded, this would run on every Bash call Codex makes, and the
-  # nix eval below is 6.2s on this machine (measured 2026-08-26) — seconds of
+  # nix eval below is 6.4s on this machine (hyperfine -N, 2026-08-26) — seconds of
   # latency added to `ls`. Claude's filter stays where it is and becomes a cheap
   # prefilter rather than the only thing that makes this safe.
   #
@@ -606,8 +616,10 @@ rec {
   # conflict state are exactly that, so this runs once and the injected prefix
   # stays byte-identical for the rest of the session. Their script fans eight
   # sections out into parallel subshells; four cheap ones do not earn a mktemp and
-  # a wait, so this stays serial — 0.03s median over five runs in /etc/nixos, with
-  # the jj conflicts query included, measured 2026-08-26.
+  # a wait, so this stays serial — 33ms in /etc/nixos with the jj conflicts query
+  # included, hyperfine -N over 20 runs, re-taken 2026-08-26 and unchanged from
+  # the 0.03s first recorded. The one figure in this file that was still true when
+  # the others were audited.
   #
   # No guardPreamble and no escalate, unlike every guard above. Those decide
   # whether a command runs, so "cannot tell" has to become a question. This
@@ -726,8 +738,12 @@ rec {
   # There is no `if` filter, because one rule string cannot express three
   # unrelated shapes, so the prefilter below stands in for it. It is a literal
   # match on the raw payload before any fork. `>` is common enough that the
-  # redirect arm pays a jq on many calls; measured at a few milliseconds against
-  # a 5s timeout, which is the right trade for the one irreversible rule here.
+  # redirect arm pays a jq on many calls: 17ms for a payload carrying one against
+  # 6ms for one that does not, so the fork costs ~11ms — against a 5s timeout,
+  # which is the right trade for the one irreversible rule here. ("A few
+  # milliseconds" is what this said before it was measured rather than estimated;
+  # the trade is the same, but the number now comes from hyperfine -N over 20 runs
+  # of the built guard against a payload file, 2026-08-26.)
   commandShapeGuard = writeGuard "${a.prefix}-guard-command-shape" ''
     set -u
     ${a.escalateFn}
