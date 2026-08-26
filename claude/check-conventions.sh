@@ -219,6 +219,17 @@ fi
 # nixpkgs attribute — plasma-manager's programs.plasma is not a tool and has no
 # entry to find — so covering it would need an exemption list, which is the shape
 # this whole section is trying to get rid of.
+# An .override argument set is not a package list, and the flat tokeniser this
+# started as could not tell the difference. `(brave-origin.override {
+# commandLineArgs = [ "--enable-features=BraveTreeTab" ]; })` broke it twice
+# over: commandLineArgs was reported as an uninventoried package, and the `];`
+# closing the override's own list ended the scan early, so every package below
+# brave silently stopped being checked at all. The second failure is the one
+# that matters — it asserts less while still printing ok.
+#
+# So: track brace depth, emit only at depth 0, and end the list only on a `];`
+# seen at depth 0. `.override`/`.overrideAttrs` is stripped so the base
+# attribute name survives its wrapper, and parens are whitespace.
 declared=$(awk '
   /^[[:space:]]*environment\.systemPackages[[:space:]]*=/ { inlist = 1 }
   inlist {
@@ -228,10 +239,16 @@ declared=$(awk '
     gsub(/with[[:space:]]+pkgs[[:space:]]*;/, "", line)
     gsub(/pkgs\./, "", line)
     gsub(/[][;]/, " ", line)
+    gsub(/[{}]/, " & ", line)
+    gsub(/[()]/, " ", line)
+    gsub(/\.override(Attrs)?/, "", line)
     n = split(line, a, /[[:space:]]+/)
-    for (i = 1; i <= n; i++)
-      if (a[i] ~ /^[A-Za-z][A-Za-z0-9_-]*$/) print a[i]
-    if ($0 ~ /\];/) inlist = 0
+    for (i = 1; i <= n; i++) {
+      if (a[i] == "{") { depth++; continue }
+      if (a[i] == "}") { if (depth > 0) depth--; continue }
+      if (depth == 0 && a[i] ~ /^[A-Za-z][A-Za-z0-9_-]*$/) print a[i]
+    }
+    if (depth == 0 && $0 ~ /\];/) inlist = 0
   }
 ' "${NIX_SOURCES[@]}" 2>/dev/null | sort -u)
 mapfile -t uninventoried < <(
