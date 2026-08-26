@@ -174,8 +174,10 @@
   #   jq -c '.session, [.sessions.event_log[] | select(.restore_browser)]' \
   #     ~/.config/BraveSoftware/Brave-Origin/Default/Preferences
   #
-  # RestoreOnStartup = 4 opens the fixed list below instead, which drops
-  # yesterday's pile. Nothing is lost — closed tabs stay in history.
+  # RestoreOnStartup = 5 opens a blank new tab instead, which drops
+  # yesterday's pile. Nothing is lost — closed tabs stay in history. No URL
+  # list: the pinned tabs are the startup set now, and they live in the
+  # profile's pinned_tabs pref, which no policy can reach.
   #
   # /etc/brave, not /etc/chromium — programs.chromium.extraOpts writes the
   # wrong dir. The binary carries both paths, so which one loads is not
@@ -185,12 +187,6 @@
   # the point — a knob that can be clicked back is how the pile returned.
   # Move the file to policies/recommended/ to make it a default instead.
   environment.etc."brave/policies/managed/nixos.json".text = builtins.toJSON {
-    RestoreOnStartup = 4;
-    RestoreOnStartupURLs = [
-      "https://mail.google.com"
-      "https://www.youtube.com"
-      "https://chatgpt.com"
-      "https://x.com"
-    ];
+    RestoreOnStartup = 5;
   };
 }
