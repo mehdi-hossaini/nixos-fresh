@@ -186,6 +186,50 @@ let
         ];
       }
     ];
+
+    # The first non-PreToolUse event wired here, and the spelling was verified
+    # rather than assumed — an unknown key in this file is ignored SILENTLY, which
+    # is the same failure that keeps the memories switch out of feature_requirements
+    # below. Codex's wire enum spells the event `sessionStart` (camelCase, in
+    # HookEventName.ts), and this file has always written PreToolUse in PascalCase,
+    # so the two spellings had to be told apart by something other than preference.
+    #
+    # Three local routes could not do it, which is worth recording so the next
+    # person does not re-walk them: `codex doctor --json` does not report hooks at
+    # all, `codex debug prompt-input` never executes the hook process (a probe
+    # writing a sentinel file proved it, so its silence says nothing about the
+    # spelling), and `debug app-server send-message-v2` takes a prompt and needs a
+    # live session. One `codex exec` against codex-cli 0.149.0 settled all three
+    # questions at once on 2026-08-26: PascalCase is the config key — Codex logged
+    # `hook: SessionStart` and `hook: SessionStart Completed`; the payload carries
+    # `cwd`, which is the one field this guard reads; and additionalContext reaches
+    # the model, which replied with the sentinel word the injected context asked
+    # for. A hook that reads as wired and is inert is the outcome that test exists
+    # to rule out.
+    #
+    # No matcher: `source` ("startup") is this event's matcher field, and every way
+    # a session begins begins on the same instructions.
+    #
+    # sessionStartContext is the one guard that ports here unchanged. The others
+    # are shaped by the escalate-to-deny collapse at the top of this file, because
+    # they decide whether a command runs; this one returns no permissionDecision at
+    # all, so there is nothing for that collapse to act on.
+    #
+    # One of its four sections is nevertheless dead here, and saying so is cheaper
+    # than having it found as a bug: the unswitched-build line compares against
+    # `${a.prefix}-nixos-built`, and only claude.nix wires recordBuild on PostToolUse.
+    # Nothing writes codex-nixos-built, so that section is silently skipped on this
+    # side. The remaining three carry the whole value here, and the guard omitting a
+    # section it has no data for is the designed behaviour rather than a failure —
+    # but it is an omission, not a report of "nothing pending". Wiring PostToolUse
+    # for Codex, or pointing both agents at one marker, is what would close it.
+    hooks.SessionStart = [
+      {
+        hooks = [
+          (mkHook "${guards.sessionStartContext}" "Probing machine state" 15)
+        ];
+      }
+    ];
   };
 
   # Law 3, as far as this layer can carry it. The editor pins are environment,
