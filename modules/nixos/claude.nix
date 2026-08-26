@@ -199,6 +199,23 @@ let
       inherit timeout statusMessage;
     }) ifs;
 
+  # Which guards this file actually attaches, read back out of `settings.hooks`
+  # rather than listed beside it. A hand-written list would be a second copy of
+  # the wiring, and a second copy of the wiring is the thing being removed — see
+  # agent-wiring.nix. Every `command` in that structure is a store path string
+  # (mkHooks and the inline entries both interpolate the derivation), so matching
+  # on it is what makes "wired" mean attached rather than merely defined.
+  #
+  # isDerivation because `guards` also carries guardPreamble, the `requires`
+  # function and two path strings, none of which is a guard.
+  hookCommands = lib.concatMap (
+    event: lib.concatMap (matcher: map (h: h.command) matcher.hooks) event
+  ) (lib.attrValues settings.hooks);
+
+  wiredGuards = lib.attrNames (
+    lib.filterAttrs (_: v: lib.isDerivation v && lib.elem "${v}" hookCommands) guards
+  );
+
   settings = {
     # Anthropic's built-in Concise style: leads with the result, drops preamble and
     # narration, keeps error output, security findings and destructive-action
@@ -512,6 +529,15 @@ in
         + "settings until they land.";
     }
   ];
+
+  # Published for modules/home/default.nix, which subtracts Codex's set from this
+  # one to say which walls a Codex session does not have. See agent-wiring.nix.
+  agents.wiredGuards.claude = wiredGuards;
+
+  # The notes come from here rather than from codex.nix because this file wires
+  # every guard there is, so its instantiation carries the complete set. Two
+  # modules setting one option would conflict.
+  agents.guardNotes = guards.absenceNotes;
 
   environment.etc."claude-code/managed-settings.json".source =
     (pkgs.formats.json { }).generate "managed-settings.json"

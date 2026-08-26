@@ -15,6 +15,7 @@
     ./hardware.nix
     ./packages.nix
     ./winboat.nix
+    ./agent-wiring.nix
     ./claude.nix
     ./codex.nix
     ./home-manager.nix

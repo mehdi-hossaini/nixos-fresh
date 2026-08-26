@@ -88,6 +88,42 @@ rec {
     [ "$matched" -eq 1 ] || exit 0
   '';
 
+  # ── what a session loses when a guard is not wired for it ───────────────────
+  # One line per guard, and every guard needs one.
+  #
+  # The two agents do not run the same set: claude.nix attaches all twelve of
+  # these, codex.nix eight. A Codex session is told about that gap in
+  # ~/.codex/AGENTS.md, and until now that sentence was hand-written prose in
+  # modules/home/default.nix, derived from nothing and checked by nothing. It had
+  # already gone wrong — it said nothing runs at session start for Codex, three
+  # commits after sessionStartContext was wired there, in the file that agent
+  # reads as its rules.
+  #
+  # So the NAMES are derived: each of the two modules reads back the guards it
+  # actually attached, and modules/home/default.nix subtracts. Only the WORDING
+  # lives here, beside the guards it is about. Wiring a guard now documents it.
+  #
+  # A guard with no entry throws at eval rather than rendering a shorter list: a
+  # wall that is absent AND unmentioned is the exact failure this file is written
+  # against.
+  #
+  # Written from the reader's side — what to do now that the wall is not there,
+  # not what the wall would have done.
+  absenceNotes = {
+    estopGuard = "There is no shared stop switch, so nothing outside your session can pause it mid-run.";
+    publishGate = "`jj commit` and `jj git push` are not gated on gitleaks and `nix flake check` — run both yourself before publishing.";
+    colocatedCommitGuard = "`git commit` in a colocated repo is not caught for you; `ls -d .jj .git` is the check to run first.";
+    untrackedNixGuard = "A referenced-but-untracked `.nix` file is not caught before the flake fails on it — `git add` a new file yourself.";
+    commandShapeGuard = "The law-1 command shapes are not refused for you.";
+    spillPaginationGuard = "Paginating a spilled tool result back into the context is not refused.";
+    shellcheckGate = "A `*.sh` you write is NOT shellchecked when it lands — that gate keys on a field Claude's edit tool sets and `apply_patch` does not, so run `shellcheck -x` yourself before calling a shell script finished.";
+    conventionsCheck = "Nothing re-runs check-conventions.sh after `nh os`, so a rebuild that invalidates a rule in these instructions passes unremarked.";
+    sessionStartCheck = "Nothing checks the conventions when a session begins, so these instructions may already be stale — `bash /etc/nixos/claude/check-conventions.sh` is what says whether they are.";
+    sessionStartContext = "Nothing probes the machine when a session begins: which version-control case this directory is, whether it carries unresolved conflicts, and whether direnv has fired are all yours to establish.";
+    recordBuild = "An `nh os build` leaves no marker, so nothing can later tell you a generation is built and waiting to be switched.";
+    handoffOnStop = "Nothing reminds you when a session ends that a built configuration is still waiting for `nh os switch`.";
+  };
+
   # ── the one wall that is not a rule ─────────────────────────────────────────
   # Borrowed from NousResearch/hermes-agent's agent/estop.py, whose semantics are
   # the part worth taking: a sentinel file pauses NEW work, in-flight work is

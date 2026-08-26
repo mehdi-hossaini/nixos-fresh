@@ -163,7 +163,10 @@ let
 
   toml = pkgs.formats.toml { };
 
-  requirements = toml.generate "codex-requirements.toml" {
+  # Named rather than passed straight to toml.generate, so `wiredGuards` below
+  # reads the same structure that lands in requirements.toml. Deriving it from
+  # anything else would be a second copy of the wiring — see agent-wiring.nix.
+  requirementsAttrs = {
     hooks.PreToolUse = [
       # First, and with NO matcher, so it covers apply_patch and anything else
       # Codex grows as well as the exec aliases below. Every other guard here
@@ -272,6 +275,23 @@ let
     ];
   };
 
+  requirements = toml.generate "codex-requirements.toml" requirementsAttrs;
+
+  # Which guards this file actually attaches, read back out of the structure
+  # above. Same derivation as claude.nix's, against a different shape: no
+  # per-hook `if` and one file instead of a settings tree, but a `command` is a
+  # store path string on both sides, so membership is the same test.
+  #
+  # denyGuard and applyPatchGuard are Codex-local and fall out for free — they
+  # are not in `guards`, so nothing has to remember to exclude them.
+  hookCommands = lib.concatMap (
+    event: lib.concatMap (matcher: map (h: h.command) matcher.hooks) event
+  ) (lib.attrValues requirementsAttrs.hooks);
+
+  wiredGuards = lib.attrNames (
+    lib.filterAttrs (_: v: lib.isDerivation v && lib.elem "${v}" hookCommands) guards
+  );
+
   # Law 3, as far as this layer can carry it. The editor pins are environment,
   # and environment is not in requirements.toml's vocabulary — so they land in the
   # defaults file, which the user can change mid-session. That makes them defaults
@@ -302,6 +322,10 @@ let
   };
 in
 {
+  # Subtracted from claude.nix's set in modules/home/default.nix, to tell a Codex
+  # session which walls it does not have. See agent-wiring.nix.
+  agents.wiredGuards.codex = wiredGuards;
+
   environment.etc."codex/requirements.toml".source = requirements;
   environment.etc."codex/managed_config.toml".source = managedConfig;
 }
