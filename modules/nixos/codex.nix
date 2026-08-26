@@ -215,18 +215,43 @@ let
     # they decide whether a command runs; this one returns no permissionDecision at
     # all, so there is nothing for that collapse to act on.
     #
-    # One of its four sections is nevertheless dead here, and saying so is cheaper
-    # than having it found as a bug: the unswitched-build line compares against
-    # `${a.prefix}-nixos-built`, and only claude.nix wires recordBuild on PostToolUse.
-    # Nothing writes codex-nixos-built, so that section is silently skipped on this
-    # side. The remaining three carry the whole value here, and the guard omitting a
-    # section it has no data for is the designed behaviour rather than a failure —
-    # but it is an omission, not a report of "nothing pending". Wiring PostToolUse
-    # for Codex, or pointing both agents at one marker, is what would close it.
+    # All four of its sections are live here; the PostToolUse block below is what
+    # makes the fourth one work, and the reason it had to exist is written there.
     hooks.SessionStart = [
       {
         hooks = [
           (mkHook "${guards.sessionStartContext}" "Probing machine state" 15)
+        ];
+      }
+    ];
+
+    # Writes codex-nixos-built, which is what makes sessionStartContext's
+    # unswitched-build section report anything on this side. Before this, only
+    # claude.nix wired recordBuild, so Codex's marker was never written and that
+    # section was silently skipped — an omission that reads as "nothing pending".
+    #
+    # The port needed a change in agent-guards.nix rather than just a line here.
+    # claude.nix narrows recordBuild with `if = Bash(nh os build*)` before the hook
+    # forks; requirements.toml has no per-hook `if`, so this matcher is as narrow as
+    # this file can be, and every Bash call reaches the script. recordBuild now
+    # re-establishes its own trigger from tool_input.command — the same fix the
+    # `requires` comment in agent-guards.nix argues for, and not a stylistic one:
+    # the nix eval it guards is 6.2s on this machine, which unguarded is 6.2s added
+    # to every `ls` Codex runs.
+    #
+    # Same tool-name matcher as PreToolUse above, for the same reason: Codex
+    # normalises its exec tool to Bash for hook purposes, and the aliases are named
+    # rather than betting on which one a future version sends.
+    #
+    # conventionsCheck, the other hook claude.nix runs on PostToolUse, is
+    # deliberately not here yet. It is gated on `Bash(nh *)` over there and carries
+    # no internal trigger, so porting it needs the same treatment recordBuild just
+    # got — worth doing, but it is a second change and not this one.
+    hooks.PostToolUse = [
+      {
+        matcher = "^(Bash|exec_command|shell_command|unified_exec|local_shell)$";
+        hooks = [
+          (mkHook "${guards.recordBuild}" "Recording the built generation" 60)
         ];
       }
     ];

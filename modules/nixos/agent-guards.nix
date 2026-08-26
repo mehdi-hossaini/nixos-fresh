@@ -210,8 +210,27 @@ rec {
   # file read, and it says WHAT is pending rather than nagging in general.
   builtMarker = "\${XDG_RUNTIME_DIR:-/tmp}/${a.prefix}-nixos-built";
 
+  # The trigger is established HERE and not only by the caller's `if` filter, for
+  # the same reason `requires` above gives: claude.nix can narrow this to
+  # `Bash(nh os build*)` before the fork, and codex.nix has no per-hook `if` at
+  # all. Ported unguarded, this would run on every Bash call Codex makes, and the
+  # nix eval below is 6.2s on this machine (measured 2026-08-26) — seconds of
+  # latency added to `ls`. Claude's filter stays where it is and becomes a cheap
+  # prefilter rather than the only thing that makes this safe.
+  #
+  # No escalate and no guardPreamble, unlike the PreToolUse guards. Those decide
+  # whether a command runs, so "cannot tell" has to become a question; this one
+  # runs after the fact and can neither block nor allow anything. The worst case
+  # of an unreadable payload is a marker that is not written, which handoffOnStop
+  # and sessionStartContext both report as "nothing pending" — an omission, and
+  # the honest answer for a hook with no way to ask.
   recordBuild = pkgs.writeShellScript "${a.prefix}-record-build" ''
     set -u
+    cmd=$(${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end' 2>/dev/null) || exit 0
+    case "$cmd" in
+    *"nh os build"*) ;;
+    *) exit 0 ;;
+    esac
     p=$(nix eval --raw /etc/nixos#nixosConfigurations."$(hostname)".config.system.build.toplevel.outPath 2>/dev/null) || exit 0
     [ -n "$p" ] && printf '%s' "$p" > ${builtMarker}
     exit 0
