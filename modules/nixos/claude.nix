@@ -266,6 +266,33 @@ let
     # toggle cannot turn it back on.
     autoMemoryEnabled = false;
 
+    # Compaction is the most destructive operation on this machine, so which of the
+    # two triggers is armed should be a decision rather than whatever shipped.
+    # Measured over 182 transcripts (.scratch/context-window/measure.sh): a
+    # compaction destroys 97.8% of context — 703,258 tokens in, 15,158 out, mean of
+    # 14 events — and independent work puts safety-rule survival at 53% after one
+    # round and 10% after five. That is survivable here only because this repo's
+    # rules are hooks rather than prose: a summary cannot weaken a deny. Anything
+    # that later moves a rule out of a hook and into the prompt forfeits that.
+    #
+    # TRUE, and the value is the whole point of writing the line. This was very
+    # nearly set to false on the reasoning that compaction here "is already
+    # manual" — all 14 recorded events carry trigger "manual" and none carry
+    # "auto", and one session reached 99.9% of a 1M window without auto firing.
+    # Every one of those facts is true and the conclusion drawn from them was
+    # wrong: `sp("autoCompactEnabled", !0)` in claude-code 2.1.238 defaults the key
+    # to TRUE, so auto-compaction is armed and has simply never been reached — the
+    # user compacts first. "Never fired" and "not enabled" look identical in the
+    # transcripts and are opposite facts about the machine.
+    #
+    # So this declares the backstop rather than removing it. Disabling it would
+    # trade a compaction nobody has needed for a session that hits the hard
+    # `context limit: N + N > N` path with no way out, and the policy tier is
+    # exactly where that could not be overridden mid-session. autoCompactWindow is
+    # deliberately left unset: a threshold that fires mid-task is worse than one the
+    # user picks, and the user picking it is what the record shows happening.
+    autoCompactEnabled = true;
+
     # Law 3. A forgotten -m now fails fast instead of hanging on a GUI window.
     # This does not reach jj's builtin DIFF editor; those forms are denied below.
     env = {
