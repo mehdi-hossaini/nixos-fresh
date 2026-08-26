@@ -8,3 +8,8 @@
 # Nothing in the tree reads ./result; it is a convenience symlink, not an input.
 result
 result-*
+
+# Wayfinder maps and their tickets (skills/engineering/wayfinder). Planning notes
+# are half-formed by design and this repo is public (law 7), so the map is kept
+# local while the decisions it produces land in tracked files.
+.scratch/
