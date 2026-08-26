@@ -92,10 +92,12 @@ let
       rulesFile = "CLAUDE.md";
       rulesPath = "~/.claude/CLAUDE.md";
       conventionsScript = "~/.claude/check-conventions.sh";
-      # The literal the harness puts in a spilled result path. Agent-specific:
+      # The literals the harness puts in a spilled result path. Agent-specific:
       # Codex spills through a different shape entirely, so a guard keyed on this
-      # one is inert there — see codex.nix.
-      spillMatch = ''*"tool-results/"*'';
+      # one is inert there — see codex.nix. A list rather than a case pattern,
+      # because agent-guards.nix builds the pattern from it AND declares it as the
+      # guard's offTrigger, and those two must not be able to disagree.
+      spillTriggers = [ "tool-results/" ];
       inherit escalateFn;
     };
   };
@@ -215,6 +217,30 @@ let
   wiredGuards = lib.attrNames (
     lib.filterAttrs (_: v: lib.isDerivation v && lib.elem "${v}" hookCommands) guards
   );
+
+  # Every PreToolUse hook this file attaches, paired with the laws its guard
+  # declares beside itself in agent-guards.nix. This is what
+  # claude/replay-guards.sh runs on.
+  #
+  # Built from settings.hooks.PreToolUse rather than from a list, for the same
+  # reason wiredGuards above is: a guard that is written and never attached must
+  # not be able to appear here and pass three laws it is not actually subject to.
+  preToolUseCommands = lib.concatMap (m: map (h: h.command) m.hooks) settings.hooks.PreToolUse;
+
+  replayEntries = map (
+    name:
+    guards.replay.${name}
+    // {
+      inherit name;
+      command = "${guards.${name}}";
+    }
+  ) (lib.filter (n: lib.elem "${guards.${n}}" preToolUseCommands) (lib.attrNames guards.replay));
+
+  # A PreToolUse hook whose guard declares no laws is a guard nothing replays —
+  # which is the state eleven of the twelve were in. The assertion below turns
+  # that into a build failure rather than a green run over a smaller set than it
+  # appears to cover.
+  undeclaredHooks = lib.subtractLists (map (e: e.command) replayEntries) preToolUseCommands;
 
   settings = {
     # Anthropic's built-in Concise style: leads with the result, drops preamble and
@@ -521,6 +547,15 @@ in
   # be one patch pessimistic, since being wrong the other way is the silent failure.
   assertions = [
     {
+      assertion = undeclaredHooks == [ ];
+      message =
+        "claude.nix attaches PreToolUse hooks with no replay laws declared beside "
+        + "their guard in agent-guards.nix:\n  "
+        + lib.concatStringsSep "\n  " undeclaredHooks
+        + "\nDeclare offTrigger and routes for each, or claude/replay-guards.sh "
+        + "reports green over a set that does not include them.";
+    }
+    {
       assertion = lib.versionAtLeast pkgs.claude-code.version "2.1.238";
       message =
         "claude.nix sets outputStyle = \"Concise\" and autoMemoryEnabled = false, "
@@ -538,6 +573,10 @@ in
   # every guard there is, so its instantiation carries the complete set. Two
   # modules setting one option would conflict.
   agents.guardNotes = guards.absenceNotes;
+
+  # The laws, for claude/replay-guards.sh. Generated from the same hook structure
+  # as managed-settings.json, so the wiring is under test alongside the guards.
+  agents.replayManifest.claude = (pkgs.formats.json { }).generate "claude-replay.json" replayEntries;
 
   environment.etc."claude-code/managed-settings.json".source =
     (pkgs.formats.json { }).generate "managed-settings.json"

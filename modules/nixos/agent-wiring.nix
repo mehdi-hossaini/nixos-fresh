@@ -36,5 +36,22 @@
         complete set — two modules setting one option would conflict.
       '';
     };
+
+    replayManifest = lib.mkOption {
+      type = lib.types.attrsOf lib.types.path;
+      default = { };
+      description = ''
+        Per agent, a generated JSON file listing every PreToolUse hook that agent
+        attaches, each paired with the laws its guard declares in
+        agent-guards.nix: offTrigger, skipOnTrigger and routes. This is the input
+        claude/replay-guards.sh runs on — it replays the recorded command corpus
+        through each and asserts totality, no-self-block and non-interference.
+
+        Generated from the same hook structure that becomes managed-settings.json
+        or requirements.toml, so the wiring is under test too: a guard that is
+        written and never attached cannot appear here and pass three laws it is
+        not subject to.
+      '';
+    };
   };
 }

@@ -124,6 +124,43 @@ rec {
     handoffOnStop = "Nothing reminds you when a session ends that a built configuration is still waiting for `nh os switch`.";
   };
 
+  # ── the laws each PreToolUse guard is held to, as data beside the guard ─────
+  # claude/replay-guards.sh replays every Bash command this machine has on record
+  # through a guard and asserts three laws over the verdicts:
+  #
+  #   L1  totality         every payload yields exactly one decision
+  #   L2  no self-block    every route a deny message names is itself allowed
+  #   L3  non-interference outside its trigger the guard is the identity function
+  #
+  # The laws were written as universal and enforced on ONE guard: the harness
+  # resolved a single script by its statusMessage — a spinner string — and carried
+  # spillPaginationGuard's routes hard-coded in its own body, so pointing it at
+  # another guard gave an honest L1 and L3 and a meaningless L2. Eleven of the
+  # twelve guards here, and both of Codex's own, were never replayed.
+  #
+  # So each guard declares what the harness needs instead, beside the deny text
+  # the routes have to match:
+  #
+  #   offTrigger    substrings. A recorded command containing NONE of them is
+  #                 outside this guard's concern and must come back allowed (L3).
+  #                 An empty list means the whole corpus is its L3 set.
+  #   skipOnTrigger optional. Drop the on-trigger commands from the replay,
+  #                 for a guard whose triggered path does real work. The harness
+  #                 prints what it dropped — a partial replay must not read as a
+  #                 total one.
+  #   routes        { command; want; estop? } probes. `want` is allow or deny.
+  #                 `estop` puts a sentinel in the harness's scratch
+  #                 XDG_RUNTIME_DIR for that probe alone.
+  #
+  # claude.nix and codex.nix each turn this into a manifest, filtered by what they
+  # actually wire, and fail the build on a PreToolUse hook that declares nothing —
+  # a guard added without laws is a guard nothing replays.
+  #
+  # Only PreToolUse guards appear here. The other six decide nothing: a PostToolUse
+  # or SessionStart hook cannot block a command, so totality and self-block have
+  # nothing to say about it.
+  probeSpillFile = "/home/probe/.claude/projects/-etc-nixos/PROBE/tool-results/probe.txt";
+
   # ── the one wall that is not a rule ─────────────────────────────────────────
   # Borrowed from NousResearch/hermes-agent's agent/estop.py, whose semantics are
   # the part worth taking: a sentinel file pauses NEW work, in-flight work is
@@ -189,6 +226,28 @@ rec {
     }'
   '';
 
+  # No trigger at all, which is the right law for the one wall that is not a
+  # rule: while the sentinel is absent this guard must be the identity function
+  # over everything, so an empty list makes the whole corpus its L3 set.
+  replay.estopGuard = {
+    offTrigger = [ ];
+    routes = [
+      # The harness points XDG_RUNTIME_DIR at a scratch directory for every probe,
+      # so `estop` creates a sentinel THERE. Engaging the real switch to test it
+      # would stop every agent on the machine, which is the one side effect a
+      # replay must not have.
+      {
+        command = "ls";
+        want = "deny";
+        estop = true;
+      }
+      {
+        command = "ls";
+        want = "allow";
+      }
+    ];
+  };
+
   # The pre-commit gate jj cannot host: jj has no hook support and bypasses
   # .git/hooks, so both checks run from PreToolUse on `jj commit` and
   # `jj git push`. Only fires when the working directory is /etc/nixos.
@@ -238,6 +297,42 @@ rec {
     $out"
   '';
 
+  replay.publishGate = {
+    offTrigger = [
+      "jj commit"
+      "jj git push"
+    ];
+    # 369 recorded commands open a segment with one of those, and replaying each
+    # would run gitleaks and a full `nix flake check` for real — half an hour to
+    # assert what the routes below assert in seconds. The off-trigger remainder
+    # still runs, and the harness prints the count it dropped rather than leaving
+    # a partial replay looking total.
+    skipOnTrigger = true;
+    routes = [
+      # The anchoring regression: merely NAMING the phrase is not performing it.
+      # Unanchored, an `rg` for the rule paid a full gate before being allowed.
+      {
+        command = "rg 'jj commit' claude/CLAUDE.md";
+        want = "allow";
+      }
+      {
+        command = "jj log";
+        want = "allow";
+      }
+      # The gate must let a clean tree through, or the only way to commit is
+      # around it. State-dependent by design: where `nix flake check` fails these
+      # come back deny, and that is the gate working rather than the law breaking.
+      {
+        command = "jj commit -m probe";
+        want = "allow";
+      }
+      {
+        command = "jj git push";
+        want = "allow";
+      }
+    ];
+  };
+
   # `git commit` is correct in a git-only repo and only destructive in a
   # colocated one, so this cannot be a flat deny pattern. It looks for .jj in the
   # working directory and denies on that.
@@ -254,6 +349,41 @@ rec {
       }
     }'
   '';
+
+  replay.colocatedCommitGuard = {
+    offTrigger = [ "git commit" ];
+    routes = [
+      {
+        command = "git commit -m probe";
+        want = "deny";
+      }
+      # The two remedies this deny names, and the reads it promises are unaffected.
+      {
+        command = "jj commit -m probe";
+        want = "allow";
+      }
+      {
+        command = "jj describe -m probe";
+        want = "allow";
+      }
+      {
+        command = "git log --oneline -3";
+        want = "allow";
+      }
+      {
+        command = "git show HEAD";
+        want = "allow";
+      }
+      {
+        command = "git blame flake.nix";
+        want = "allow";
+      }
+      {
+        command = "rg 'git commit' claude/CLAUDE.md";
+        want = "allow";
+      }
+    ];
+  };
 
   # Same check as the nh hook below, at the other end of the session.
   #
@@ -560,6 +690,66 @@ rec {
     exit 0
   '';
 
+  replay.commandShapeGuard = {
+    # The guard's own literal prefilter, as data: a payload carrying none of
+    # these is one it exits on before it parses anything.
+    #
+    # Worth knowing before editing this block. Unlike every other guard here,
+    # this one matches unanchored substrings of the whole payload, so a command
+    # that merely CONTAINS one of the shapes below is denied — writing these
+    # routes through a shell heredoc is refused by the very guard they describe.
+    # The routes are data in a nix file precisely so they never have to be typed
+    # into a Bash call again.
+    offTrigger = [
+      "nix profile"
+      "nix-env"
+      "bin/activate"
+      ">"
+    ];
+    routes = [
+      {
+        command = "nix profile install hello";
+        want = "deny";
+      }
+      {
+        command = "nix profile add hello";
+        want = "deny";
+      }
+      {
+        command = "nix-env -i hello";
+        want = "deny";
+      }
+      {
+        command = "source .venv/bin/activate";
+        want = "deny";
+      }
+      # The three remedies the three denies name. Each has to be allowed, or the
+      # wall refuses the thing it just told you to do.
+      {
+        command = "nix shell nixpkgs#hello -c hello";
+        want = "allow";
+      }
+      {
+        command = "uv run script.py";
+        want = "allow";
+      }
+      {
+        command = "sort flake.nix | sponge flake.nix";
+        want = "allow";
+      }
+      # The truncation arm is gated on the target already existing, so the probe
+      # names a file this repo always has.
+      {
+        command = "sort flake.nix > flake.nix";
+        want = "deny";
+      }
+      {
+        command = "sort flake.nix > /tmp/sorted.nix";
+        want = "allow";
+      }
+    ];
+  };
+
   # "New files must be `git add`ed first or the flake cannot see them." Verified
   # 2026-08-22: a referenced-but-untracked module fails with `error: Path '…' in
   # the repository "/etc/nixos" is not tracked by Git`. That message names the
@@ -573,6 +763,23 @@ rec {
     /etc/nixos | /etc/nixos/*) ;;
     *) exit 0 ;;
     esac
+    # L2, no self-block. This deny names `git add` as the remedy, and complying
+    # with it in one line — `git add new.nix && nh os build` — was denied by this
+    # guard, because it judged the compound before the add inside it had run. A
+    # wall that refuses its own remedy is a trap sprung at the moment you obey it,
+    # and claude/replay-guards.sh now asserts that it is not one.
+    #
+    # So a command that adds first is let through. Nothing is lost: if it named
+    # the right file the build works, and if it did not, the flake fails with the
+    # message this guard exists to pre-empt — which is exactly where the command
+    # would have landed with no wall at all.
+    while IFS= read -r seg; do
+      case "$seg" in
+      "git add"*) exit 0 ;;
+      esac
+    done <<ADD_SEGMENTS
+    $(segments)
+    ADD_SEGMENTS
     files=$(git -C /etc/nixos ls-files --others --exclude-standard -- '*.nix' 2>/dev/null)
     [ -n "$files" ] || exit 0
     ${jq} -n --arg f "$files" '{
@@ -583,6 +790,36 @@ rec {
       }
     }'
   '';
+
+  replay.untrackedNixGuard = {
+    offTrigger = [
+      "nh os build"
+      "nix flake check"
+    ];
+    routes = [
+      # The remedy this deny names, and the one-line form of complying with it —
+      # which this guard used to refuse. See the L2 note in the body above.
+      {
+        command = "git add modules/nixos/probe.nix";
+        want = "allow";
+      }
+      {
+        command = "git add modules/nixos/probe.nix && nh os build /etc/nixos";
+        want = "allow";
+      }
+      {
+        command = "rg 'nh os build' claude/CLAUDE.md";
+        want = "allow";
+      }
+      # State-dependent in the same way publishGate's routes are: this is deny on
+      # a tree that really does carry an untracked .nix, which is the guard
+      # working rather than the law breaking.
+      {
+        command = "nh os build /etc/nixos";
+        want = "allow";
+      }
+    ];
+  };
 
   # Context economy — the one rule here whose cost is paid in a resource that
   # cannot be topped up mid-session. When a Bash result is oversized the harness
@@ -617,7 +854,7 @@ rec {
     # payload without this substring cannot be about a spill file, so allowing it
     # is an answer rather than a guess.
     case $input in
-    ${a.spillMatch}) ;;
+    ${pkgs.lib.concatMapStringsSep " | " (t: "*\"${t}\"*") a.spillTriggers}) ;;
     *) exit 0 ;;
     esac
     cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end') ||
@@ -650,4 +887,54 @@ rec {
     *) exit 0 ;;
     esac
   '';
+
+  replay.spillPaginationGuard = {
+    # The same list the prefilter above is built from, so the law and the guard
+    # cannot disagree about what this one is even about.
+    offTrigger = a.spillTriggers;
+    routes = [
+      # Route 1 of the two the deny names: query the file instead of reading it.
+      {
+        command = "grep -n anchor ${probeSpillFile}";
+        want = "allow";
+      }
+      {
+        command = "rg anchor ${probeSpillFile}";
+        want = "allow";
+      }
+      {
+        command = "grep -n anchor ${probeSpillFile} | head -20";
+        want = "allow";
+      }
+      # Route 2, the one that gets forgotten: re-run the original in batches.
+      {
+        command = "for f in a.md b.md; do cat $f; done";
+        want = "allow";
+      }
+      # Verbs this guard has no opinion about. One that grew an opinion here
+      # would be interfering rather than guarding.
+      {
+        command = "rm ${probeSpillFile}";
+        want = "allow";
+      }
+      {
+        command = "wc -l ${probeSpillFile}";
+        want = "allow";
+      }
+      # The shape it exists to refuse, including the position-0 case that has no
+      # leading space for a naive " cat " test to find.
+      {
+        command = "sed -n '1,400p' ${probeSpillFile}";
+        want = "deny";
+      }
+      {
+        command = "cat ${probeSpillFile}";
+        want = "deny";
+      }
+      {
+        command = "cat ${probeSpillFile} | tail -5";
+        want = "deny";
+      }
+    ];
+  };
 }

@@ -74,8 +74,14 @@ let
       # Codex has no `tool-results` path — 0 occurrences in the 0.147.0 binary,
       # against 60 for `output_spill`. Both are matched so the guard is not simply
       # inert, but the second has NOT been seen in a real payload, which is why
-      # AGENTS.md calls this rule best-effort rather than enforced.
-      spillMatch = ''*"tool-results/"* | *"output_spill"*'';
+      # AGENTS.md calls this rule best-effort rather than enforced. A list rather
+      # than a case pattern, because agent-guards.nix builds the pattern from it
+      # AND declares it as the guard's offTrigger — two facts that must not be
+      # able to disagree about what this guard is even about.
+      spillTriggers = [
+        "tool-results/"
+        "output_spill"
+      ];
       inherit escalateFn;
     };
   };
@@ -288,6 +294,98 @@ let
     event: lib.concatMap (matcher: map (h: h.command) matcher.hooks) event
   ) (lib.attrValues requirementsAttrs.hooks);
 
+  # The laws, for claude/replay-guards.sh. The shared guards declare theirs beside
+  # themselves in agent-guards.nix; the two guards this file defines itself have
+  # to declare theirs here, beside the same bodies.
+  replayLaws = guards.replay // {
+    denyGuard = {
+      # Derived from the deny patterns themselves rather than hand-listed: the
+      # literal prefix of each pattern is what a command must contain to be worth
+      # judging, and a second list here would be a second copy of the deny list.
+      # `jj * -i` reduces to "jj", which pulls every jj command out of the L3 set
+      # — conservative, and honest in a way a curated list would not be.
+      offTrigger = lib.unique (
+        lib.filter (s: s != "") (
+          map (p: lib.removeSuffix " " (lib.head (lib.splitString "*" p))) (
+            lib.concatMap (g: g.patterns) (denies.bashGroups ++ denies.tuiGroups)
+          )
+        )
+      );
+      routes = [
+        {
+          command = "nh os switch /etc/nixos";
+          want = "deny";
+        }
+        # The remedy that deny names. A stop switch that also blocks the build you
+        # are told to hand over would be a dead end rather than a wall.
+        {
+          command = "nh os build /etc/nixos";
+          want = "allow";
+        }
+        {
+          command = "nvim flake.nix";
+          want = "deny";
+        }
+        # The scriptable halves the bare-form denies promise stay open.
+        {
+          command = "jj log";
+          want = "allow";
+        }
+        {
+          command = "codex exec 'hello'";
+          want = "allow";
+        }
+      ];
+    };
+    applyPatchGuard = {
+      # The literal out of the glob: codexMatch is a case pattern (`*name*`)
+      # and this is a substring test, so the stars have to come off. Left on,
+      # nothing matched, every command counted as off-trigger, and the 29
+      # recorded commands that merely NAME the file failed L3.
+      offTrigger = [ (lib.removePrefix "*" (lib.removeSuffix "*" denies.fileRule.codexMatch)) ];
+      routes = [
+        {
+          command = "*** Begin Patch\n*** Update File: hosts/nixos-machine/hardware-configuration.nix\n";
+          want = "deny";
+        }
+        # The two files beside it are hand-written and must stay editable — the
+        # deny reason says so, so this is the route it names.
+        {
+          command = "*** Begin Patch\n*** Update File: hosts/nixos-machine/default.nix\n";
+          want = "allow";
+        }
+        {
+          command = "*** Begin Patch\n*** Update File: hosts/nixos-machine/disko.nix\n";
+          want = "allow";
+        }
+      ];
+    };
+  };
+
+  # `guards` plus the two local ones, so a name in replayLaws resolves to a script
+  # whichever file defines it.
+  allGuards = guards // {
+    inherit denyGuard applyPatchGuard;
+  };
+
+  preToolUseCommands = lib.concatMap (
+    m: map (h: h.command) m.hooks
+  ) requirementsAttrs.hooks.PreToolUse;
+
+  replayEntries = map (
+    name:
+    replayLaws.${name}
+    // {
+      inherit name;
+      command = "${allGuards.${name}}";
+    }
+  ) (lib.filter (n: lib.elem "${allGuards.${n}}" preToolUseCommands) (lib.attrNames replayLaws));
+
+  # Same wall as claude.nix's: a PreToolUse hook with no declared laws is a guard
+  # nothing replays, and this side is where that had actually happened — the
+  # harness defaulted to Claude, so neither of the two guards above had ever been
+  # run through a law.
+  undeclaredHooks = lib.subtractLists (map (e: e.command) replayEntries) preToolUseCommands;
   wiredGuards = lib.attrNames (
     lib.filterAttrs (_: v: lib.isDerivation v && lib.elem "${v}" hookCommands) guards
   );
@@ -322,6 +420,21 @@ let
   };
 in
 {
+  assertions = [
+    {
+      assertion = undeclaredHooks == [ ];
+      message =
+        "codex.nix attaches PreToolUse hooks with no replay laws declared beside "
+        + "their guard:\n  "
+        + lib.concatStringsSep "\n  " undeclaredHooks
+        + "\nShared guards declare theirs in agent-guards.nix, this file's own two "
+        + "in replayLaws above — or claude/replay-guards.sh reports green over a "
+        + "set that does not include them.";
+    }
+  ];
+
+  agents.replayManifest.codex = (pkgs.formats.json { }).generate "codex-replay.json" replayEntries;
+
   # Subtracted from claude.nix's set in modules/home/default.nix, to tell a Codex
   # session which walls it does not have. See agent-wiring.nix.
   agents.wiredGuards.codex = wiredGuards;

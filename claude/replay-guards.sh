@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Replay every Bash command this machine has already run through a PreToolUse
-# guard, and assert the guard's laws over that corpus.
+# Replay every Bash command this machine has already run through EVERY PreToolUse
+# guard, and assert each guard's laws over that corpus.
 #
 # Why a corpus and not a single red run. Watching a guard go red once is
 # example-based: it proves the guard fires on the case you thought of, which is
@@ -17,70 +17,63 @@
 #   L3  non-interference  outside its trigger the guard is the identity function
 #
 # L2 is the reusable one. A wall that denies its own remedy looks correct in
-# review and traps you at the moment you comply with it.
+# review and traps you at the moment you comply with it. It found the one in
+# untrackedNixGuard: that deny says to run `git add`, and `git add new.nix && nh
+# os build` — complying in a single line — was refused by the guard that said it.
+#
+# EVERY guard, which it did not used to be. This script resolved ONE script by
+# its statusMessage, a spinner string, and carried one guard's routes hard-coded
+# in its own body; pointing it elsewhere gave an honest L1 and L3 and a
+# meaningless L2. So the laws moved to where the guards are: each declares its
+# offTrigger and its routes beside its own deny text in
+# modules/nixos/agent-guards.nix, claude.nix and codex.nix turn that into a
+# manifest filtered by what each actually wires, and both fail the build on a
+# PreToolUse hook that declares nothing. This script reads the manifest and holds
+# every entry to all three laws.
+#
+# Reading the manifest keeps the property the statusMessage lookup had: it is
+# generated from the same hook structure that becomes managed-settings.json or
+# requirements.toml, so a guard that is written and never attached cannot appear
+# here and pass three laws it is not subject to.
 #
 # Usage:
-#   bash claude/replay-guards.sh                 # resolve the guard from the flake
-#   GUARD=/path/to/script bash claude/replay-guards.sh   # a doctored copy, to watch it go red
+#   bash claude/replay-guards.sh                    # claude's guards
+#   AGENT=codex bash claude/replay-guards.sh        # codex's, including its own two
+#   ONLY=publishGate bash claude/replay-guards.sh   # one guard, while iterating
+#   MANIFEST=/path/to.json bash claude/replay-guards.sh   # a doctored copy, to watch it go red
+#
+# Exit 0 = every law holds for every guard. 1 = at least one failed. 2 = the run
+# could not be set up.
 
-set -uo pipefail
+set -u
 
 FLAKE=${FLAKE:-/etc/nixos}
 HOST=${HOST:-nixos-machine}
+AGENT=${AGENT:-claude}
 PROJECTS=${PROJECTS:-$HOME/.claude/projects}
-STATUS=${STATUS:-Checking for a paginated spill read}
-TRIGGER=${TRIGGER:-tool-results/}
-GUARD=${GUARD:-}
-
-red=0
+MANIFEST=${MANIFEST:-}
+ONLY=${ONLY:-}
+# The cwd every payload claims. Guards that scope themselves to this repo read
+# it, so replaying from anywhere else would silently exercise their other arm.
+CWD=${CWD:-/etc/nixos}
 
 note() { printf '%s\n' "$*"; }
-fail() {
-  printf 'FAIL  %s\n' "$*"
-  red=1
-}
-pass() { printf 'ok    %s\n' "$*"; }
 
-# ── resolve the guard ────────────────────────────────────────────────────────
-# Read it out of the built managed settings rather than the module, so the
-# wiring is under test too: a guard that is written but never reached would
-# otherwise pass every law here.
-if [ -z "$GUARD" ]; then
-  note "building managed settings from $FLAKE ..."
-  # AGENT picks which side is replayed. Claude's guards are named in a JSON
-  # settings file and Codex's in a TOML requirements file, but both identify a
-  # guard by its statusMessage, so one lookup covers either once the file is
-  # chosen. Defaulting to claude alone is how the Codex hooks went unreplayed: the
-  # totality law below is exactly what the escalate-to-deny collapse changes, and
-  # nothing was checking it over there.
-  case "${AGENT:-claude}" in
-  codex) attr='environment.etc."codex/requirements.toml".source' ;;
-  *) attr='environment.etc."claude-code/managed-settings.json".source' ;;
-  esac
-  settings=$(nix build --no-link --print-out-paths \
-    "$FLAKE#nixosConfigurations.$HOST.config.$attr" 2>/dev/null | tail -1)
-  [ -n "$settings" ] && [ -e "$settings" ] ||
-    {
-      note "could not build ${AGENT:-claude} settings from $FLAKE"
-      exit 2
-    }
-  # tomlq takes jq syntax over TOML, so the filter is the same either way.
-  reader=jq
-  [ "${AGENT:-claude}" = codex ] && reader=tomlq
-  # shellcheck disable=SC2016  # $s is jq syntax; the reader is jq or tomlq, which share it
-  GUARD=$("$reader" -r --arg s "$STATUS" \
-    '.hooks.PreToolUse[].hooks[] | select(.statusMessage==$s) | .command' "$settings" | head -1)
-  [ -n "$GUARD" ] ||
-    {
-      note "no hook in the built settings carries statusMessage: $STATUS"
-      exit 2
-    }
+# ── resolve the manifest ─────────────────────────────────────────────────────
+if [ -z "$MANIFEST" ]; then
+  note "building $AGENT's replay manifest from $FLAKE ..."
+  MANIFEST=$(nix build --no-link --print-out-paths \
+    "$FLAKE#nixosConfigurations.$HOST.config.agents.replayManifest.$AGENT" 2>/dev/null | tail -1)
 fi
-[ -x "$GUARD" ] || {
-  note "guard is not executable: $GUARD"
+[ -n "$MANIFEST" ] && [ -r "$MANIFEST" ] || {
+  note "could not read a replay manifest for $AGENT"
   exit 2
 }
-note "guard under test: $GUARD"
+count=$(jq 'length' "$MANIFEST" 2>/dev/null) || count=0
+[ "$count" -gt 0 ] || {
+  note "$AGENT's manifest lists no PreToolUse guards"
+  exit 2
+}
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -100,115 +93,205 @@ total=$(wc -l <"$work/corpus.json")
   note "corpus is empty — no transcripts under $PROJECTS"
   exit 2
 }
-note "corpus: $total recorded Bash commands"
-
-# Wrap each into a hook payload in a single jq pass rather than one fork each.
-jq -c '{cwd: "/etc/nixos", tool_input: {command: .}}' <"$work/corpus.json" >"$work/payloads.json"
-
-# ── run every payload once, record the verdicts ──────────────────────────────
-# One JSON object per line. A recorded command routinely contains newlines and
-# occasionally a null byte, so it never survives a line-oriented record intact:
-# the first attempt used a TSV and awk counted every continuation line as its own
-# verdict, reporting more violations than there were commands. The payload is
-# already valid JSON and `decision` is one of six fixed words, so this needs no
-# escaping and no extra jq fork per command.
-: >"$work/verdicts.jsonl"
-undecided=0
-malformed=0
-while IFS= read -r payload; do
-  out=$(printf '%s' "$payload" | "$GUARD" 2>&1)
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
-    decision=crash
-    malformed=$((malformed + 1))
-  elif [ -z "$out" ]; then
-    decision=allow
-  else
-    decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-    # "ask", not "escalate": claude-code's enum is allow/deny/ask/defer, and a
-    # word outside it is exactly the vocabulary bug this set must not absorb —
-    # an unknown decision counts as undecided and fails L1, by design.
-    case $decision in
-    deny | ask | allow) ;;
-    *)
-      decision=undecided
-      undecided=$((undecided + 1))
-      ;;
-    esac
-  fi
-  printf '{"decision":"%s","payload":%s}\n' "$decision" "$payload" >>"$work/verdicts.jsonl"
-done <"$work/payloads.json"
-
-# Shared by the reports below: the command text, flattened to one line.
-oneline='(.payload.tool_input.command // "") | gsub("\n"; " ⏎ ") | .[0:110]'
-
-# ── L1 totality ──────────────────────────────────────────────────────────────
-if [ "$malformed" -eq 0 ] && [ "$undecided" -eq 0 ]; then
-  pass "L1 totality — all $total payloads produced exactly one decision"
-else
-  fail "L1 totality — $malformed crashed, $undecided produced output that named no decision"
-  jq -r "select(.decision==\"crash\" or .decision==\"undecided\")
-               | \"  \" + .decision + \": \" + ($oneline)" "$work/verdicts.jsonl" | head -5
-fi
-
-# ── L3 non-interference ──────────────────────────────────────────────────────
-# Anything that never mentions the trigger must come back untouched.
-# $t is a jq variable bound by --arg below, so the shell must NOT expand it.
-# shellcheck disable=SC2016
-offtrigger='(.payload.tool_input.command // "") | contains($t) | not'
-offtrigger_total=$(jq -s --arg t "$TRIGGER" "[.[] | select($offtrigger)] | length" "$work/verdicts.jsonl")
-offtrigger_denied=$(jq -s --arg t "$TRIGGER" \
-  "[.[] | select($offtrigger) | select(.decision != \"allow\")] | length" "$work/verdicts.jsonl")
-if [ "$offtrigger_denied" -eq 0 ]; then
-  pass "L3 non-interference — $offtrigger_total commands outside the trigger, all allowed"
-else
-  fail "L3 non-interference — $offtrigger_denied commands outside the trigger were not allowed"
-  jq -r --arg t "$TRIGGER" "select($offtrigger) | select(.decision != \"allow\")
-               | \"  \" + .decision + \": \" + ($oneline)" "$work/verdicts.jsonl" | head -5
-fi
-
-# ── L2 no self-block ─────────────────────────────────────────────────────────
-# The routes the deny message names, run against a spill path. Each must be
-# allowed, or the guard walls off the very thing it just told you to do.
-spill="$HOME/.claude/projects/-etc-nixos/SESSION/tool-results/abc123.txt"
-probe() {
-  local label=$1 cmd=$2 want=$3 out decision
-  out=$(jq -nc --arg c "$cmd" '{cwd:"/etc/nixos", tool_input:{command:$c}}' | "$GUARD" 2>&1)
-  if [ -z "$out" ]; then decision=allow; else
-    decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "undecided"' 2>/dev/null)
-  fi
-  if [ "$decision" = "$want" ]; then
-    pass "L2 $label → $decision"
-  else
-    fail "L2 $label → $decision (wanted $want)"
-  fi
-}
-note "L2 — the exits the deny message names:"
-probe "route 1, grep the spill file" "grep -n 'anchor' $spill" allow
-probe "route 1, rg the spill file" "rg 'anchor' $spill" allow
-probe "route 1, grep piped to head" "grep -n 'anchor' $spill | head -20" allow
-# $f belongs to the command text being judged, not to this script — it must stay
-# literal, which is the whole point of the probe.
-# shellcheck disable=SC2016
-probe "route 2, re-run the original smaller" 'for f in a.md b.md; do cat $f; done' allow
-probe "unopinionated, rm a spill file" "rm $spill" allow
-probe "unopinionated, wc a spill file" "wc -l $spill" allow
-note "L2 — the shape the guard exists to refuse:"
-probe "sed range over a spill file" "sed -n '1,400p' $spill" deny
-probe "cat a spill file" "cat $spill" deny
-probe "cat at position 0, no leading space" "cat $spill | tail -5" deny
-
-# ── report the deny set ──────────────────────────────────────────────────────
-denied=$(jq -s '[.[] | select(.decision=="deny")] | length' "$work/verdicts.jsonl")
+note "corpus: $total recorded Bash commands · $count guards · agent: $AGENT"
 note ""
-note "deny set over the historical corpus: $denied of $total"
-jq -r "select(.decision==\"deny\") | \"  \" + ($oneline)" "$work/verdicts.jsonl" | sort -u
 
-if [ "$red" -eq 0 ]; then
-  note ""
-  note "all laws hold."
-else
-  note ""
-  note "at least one law failed."
+# ── one guard, all three laws ────────────────────────────────────────────────
+# Runs in a background subshell: `red` cannot be propagated out of one, so the
+# count lands in a file and the parent sums them.
+run_guard() {
+  local idx=$1
+  local entry guard skip off log rt red=0
+
+  entry=$(jq -c ".[$idx]" "$MANIFEST")
+  guard=$(jq -r '.command' <<<"$entry")
+  skip=$(jq -r '.skipOnTrigger // false' <<<"$entry")
+  off=$(jq -c '.offTrigger' <<<"$entry")
+  log=$work/log.$idx
+
+  : >"$log"
+  pass() {
+    printf '  ok    %s\n' "$*" >>"$log"
+    return 0
+  }
+  fail() {
+    printf '  FAIL  %s\n' "$*" >>"$log"
+    red=$((red + 1))
+  }
+
+  [ -x "$guard" ] || {
+    printf '  FAIL  guard is not executable: %s\n' "$guard" >>"$log"
+    echo 1 >"$work/red.$idx"
+    return
+  }
+
+  # Every invocation gets its own scratch XDG_RUNTIME_DIR. estopGuard reads its
+  # sentinel from there, so this both keeps the corpus replay disengaged and lets
+  # a route engage the switch without touching the real one — engaging that would
+  # stop every agent on the machine, the one side effect a replay must not have.
+  rt=$work/rt.$idx
+  mkdir -p "$rt"
+  export XDG_RUNTIME_DIR=$rt
+
+  # Split the corpus by this guard's own trigger: bind the command, then ask
+  # whether any declared trigger is a substring of it. An empty offTrigger makes
+  # every command off-trigger, which is the correct law for a guard that has no
+  # trigger — while its switch is disengaged it must be the identity function
+  # over everything.
+  # $s is bound explicitly. Written as `select($c | contains(.))` the `.` rebinds
+  # to $c inside the pipe, so every command matched every trigger and both L1 and
+  # L3 silently ran over an empty set while reporting green.
+  jq -c --argjson t "$off" --arg cwd "$CWD" \
+    '. as $c
+     | {on: ([$t[] as $s | select($c | contains($s))] | length > 0),
+        payload: {cwd: $cwd, tool_input: {command: $c}}}' \
+    <"$work/corpus.json" >"$work/split.$idx"
+
+  local replayed=0 dropped=0
+  : >"$work/verdicts.$idx"
+  while IFS= read -r line; do
+    local on payload out rc decision
+    case $line in
+    '{"on":true'*) on=true ;;
+    *) on=false ;;
+    esac
+    if [ "$skip" = true ] && [ "$on" = true ]; then
+      dropped=$((dropped + 1))
+      continue
+    fi
+    payload=$(jq -c '.payload' <<<"$line")
+    # stderr is kept OUT of the decision. Folding it in with 2>&1 made a guard
+    # that merely chattered look like one that named no decision: GNU sed writes
+    # "invalid or incomplete multibyte character" for some recorded commands, and
+    # four payloads failed L1 for it while the guard was in fact allowing them
+    # correctly. It is still worth seeing — a guard whose sed died lost that arm
+    # silently — so it accumulates and is reported as a note below.
+    out=$(printf '%s' "$payload" | "$guard" 2>>"$work/err.$idx")
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+      decision=crash
+    elif [ -z "$out" ]; then
+      decision=allow
+    else
+      decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+      # "ask", not "escalate": claude-code's enum is allow/deny/ask/defer, and a
+      # word outside it is exactly the vocabulary bug this set must not absorb —
+      # an unknown decision counts as undecided and fails L1, by design.
+      case $decision in
+      deny | ask | allow) ;;
+      *) decision=undecided ;;
+      esac
+    fi
+    replayed=$((replayed + 1))
+    printf '{"on":%s,"decision":"%s","payload":%s}\n' "$on" "$decision" "$payload" \
+      >>"$work/verdicts.$idx"
+  done <"$work/split.$idx"
+
+  # ── L1 totality ────────────────────────────────────────────────────────────
+  local bad
+  bad=$(jq -s '[.[] | select(.decision=="crash" or .decision=="undecided")] | length' "$work/verdicts.$idx")
+  if [ "$bad" -eq 0 ]; then
+    pass "L1 totality — all $replayed payloads produced exactly one decision"
+  else
+    fail "L1 totality — $bad payloads crashed or named no decision"
+    jq -r 'select(.decision=="crash" or .decision=="undecided")
+             | "        " + .decision + ": " + ((.payload.tool_input.command // "") | gsub("\n"; " ⏎ ") | .[0:100])' \
+      "$work/verdicts.$idx" | head -5 >>"$log"
+  fi
+  if [ "$dropped" -gt 0 ]; then
+    printf '  note  %s on-trigger commands dropped (skipOnTrigger: the triggered path does real work)\n' \
+      "$dropped" >>"$log"
+  fi
+  if [ -s "$work/err.$idx" ]; then
+    printf '  note  the guard wrote to stderr on some payloads — not a decision, but an arm that died quietly:\n' >>"$log"
+    sort -u "$work/err.$idx" | head -3 | sed 's/^/        /' >>"$log"
+  fi
+
+  # ── L3 non-interference ────────────────────────────────────────────────────
+  local off_total off_bad
+  off_total=$(jq -s '[.[] | select(.on == false)] | length' "$work/verdicts.$idx")
+  off_bad=$(jq -s '[.[] | select(.on == false and .decision != "allow")] | length' "$work/verdicts.$idx")
+  if [ "$off_bad" -eq 0 ]; then
+    pass "L3 non-interference — $off_total commands outside the trigger, all allowed"
+  else
+    fail "L3 non-interference — $off_bad commands outside the trigger were not allowed"
+    jq -r 'select(.on == false and .decision != "allow")
+             | "        " + .decision + ": " + ((.payload.tool_input.command // "") | gsub("\n"; " ⏎ ") | .[0:100])' \
+      "$work/verdicts.$idx" | head -5 >>"$log"
+  fi
+
+  # ── L2 no self-block ───────────────────────────────────────────────────────
+  # The declared routes: what the deny message names as the way out must be
+  # allowed, and the shape the guard exists to refuse must be denied.
+  local nroutes r cmd want estop out decision reason
+  nroutes=$(jq '.routes | length' <<<"$entry")
+  for ((r = 0; r < nroutes; r++)); do
+    cmd=$(jq -r ".routes[$r].command" <<<"$entry")
+    want=$(jq -r ".routes[$r].want" <<<"$entry")
+    estop=$(jq -r ".routes[$r].estop // false" <<<"$entry")
+    if [ "$estop" = true ]; then
+      printf 'replay probe\n' >"$rt/agent-estop"
+    fi
+    out=$(jq -nc --arg c "$cmd" --arg cwd "$CWD" '{cwd:$cwd, tool_input:{command:$c}}' | "$guard" 2>&1)
+    rm -f "$rt/agent-estop"
+    if [ -z "$out" ]; then
+      decision=allow
+    else
+      decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "undecided"' 2>/dev/null)
+    fi
+    if [ "$decision" = "$want" ]; then
+      pass "L2 $(printf '%s' "$cmd" | tr '\n' ' ' | cut -c1-64) → $decision"
+    else
+      fail "L2 $(printf '%s' "$cmd" | tr '\n' ' ' | cut -c1-64) → $decision (wanted $want)"
+      reason=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+      [ -n "$reason" ] && printf '        %s\n' "$(printf '%s' "$reason" | head -c 200)" >>"$log"
+    fi
+  done
+
+  # ── the deny set, for eyeballing ───────────────────────────────────────────
+  local denied
+  denied=$(jq -s '[.[] | select(.decision=="deny")] | length' "$work/verdicts.$idx")
+  printf '  note  deny set over the corpus: %s of %s\n' "$denied" "$replayed" >>"$log"
+  jq -r 'select(.decision=="deny")
+           | "        " + ((.payload.tool_input.command // "") | gsub("\n"; " ⏎ ") | .[0:100])' \
+    "$work/verdicts.$idx" | sort -u | head -8 >>"$log"
+
+  echo "$red" >"$work/red.$idx"
+}
+
+# ── run the guards concurrently ──────────────────────────────────────────────
+# In parallel across GUARDS, not across payloads: each guard keeps its own
+# sequential loop and its own output file, so nothing interleaves and the wall
+# clock is the slowest single guard rather than their sum.
+for ((i = 0; i < count; i++)); do
+  gname=$(jq -r ".[$i].name" "$MANIFEST")
+  if [ -n "$ONLY" ] && [ "$gname" != "$ONLY" ]; then
+    continue
+  fi
+  run_guard "$i" &
+done
+wait
+
+# ── report, in manifest order ────────────────────────────────────────────────
+red=0
+ran=0
+for ((i = 0; i < count; i++)); do
+  [ -r "$work/red.$i" ] || continue
+  ran=$((ran + 1))
+  gname=$(jq -r ".[$i].name" "$MANIFEST")
+  printf '\n\033[1m%s\033[0m\n' "$gname"
+  cat "$work/log.$i"
+  red=$((red + $(cat "$work/red.$i")))
+done
+
+note ""
+if [ "$ran" -eq 0 ]; then
+  note "no guard matched ONLY=$ONLY"
+  exit 2
 fi
-exit "$red"
+if [ "$red" -eq 0 ]; then
+  note "all laws hold for all $ran guards."
+else
+  note "$red law(s) failed across $ran guards."
+fi
+exit $((red > 0 ? 1 : 0))
