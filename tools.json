@@ -369,6 +369,13 @@
       "notes": "PrismLauncher-Cracked fork (github:Diegiwg/PrismLauncher-Cracked), overlaid to replace the official nixpkgs package — supports offline accounts only. The fork exists to bypass purchase verification, so a real Microsoft account is unsupported and risks violating Mojang/Microsoft ToS."
     },
     {
+      "name": "steam",
+      "package": "steam",
+      "category": "desktop",
+      "purpose": "Valve's game client and store. GUI, so an agent shell cannot drive it. Declared through programs.steam (modules/nixos/steam.nix) rather than systemPackages, because the bare package cannot run: Steam ships and downloads prebuilt 32-bit binaries that expect FHS paths, and the module is what provides the sandbox those resolve in.",
+      "notes": "Reverses the 'Not installed, on purpose' entry POST-INSTALL.md carried from the beginning. Rides on two settings that were already true and are not restated in steam.nix: nixpkgs.config.allowUnfree (nix.nix) and hardware.graphics.enable32Bit (hardware.nix), the second being the usual reason a fresh install renders nothing. Remote Play and dedicated-server firewall ports, the gamescope session and extraCompatPackages are all deliberately left off; steam.nix says why for each. State is ~/.local/share/Steam for the library and ~/.steam for the login, both in impermanence.nix."
+    },
+    {
       "name": "winboat",
       "package": "winboat",
       "category": "desktop",

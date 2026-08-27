@@ -14,6 +14,7 @@
     ./desktop.nix
     ./hardware.nix
     ./packages.nix
+    ./steam.nix
     ./winboat.nix
     ./agent-wiring.nix
     ./claude.nix

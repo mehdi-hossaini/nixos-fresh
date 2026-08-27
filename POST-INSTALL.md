@@ -340,8 +340,13 @@ kitty, whose native tabs sit on `Ctrl+Shift+*` where no terminal program looks �
 
 # Not installed, on purpose
 
-Steam, OBS, any gaming stack, the CachyOS kernel, Firefox, Konsole, Ghostty,
-and system-wide Rust. Each was a decision, not an oversight.
+OBS, the CachyOS kernel, Firefox, Konsole, Ghostty, and system-wide Rust. Each
+was a decision, not an oversight.
+
+**Steam was on this list and no longer is.** It went in on 2026-08-27 through
+`programs.steam` — see `modules/nixos/steam.nix`, which also records the four
+sub-options left off. A decision that changes should read as changed rather than
+be quietly deleted, which is why this paragraph exists instead of a shorter list.
 
 **bat went the same way, one audit later.** It was the last tool left in that
 category: enabled, configured, and called by nothing — no `PAGER`, no `MANPAGER`,

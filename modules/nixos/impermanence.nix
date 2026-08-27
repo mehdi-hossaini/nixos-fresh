@@ -188,6 +188,16 @@ in
     # Smaller, but losing it orphans a container that is still running.
     "winboat"
     ".winboat"
+    # Steam. The library itself needs no entry — it lands in
+    # ~/.local/share/Steam, and .local/share is persisted wholesale below. This
+    # catches the other half, which sits in the home root: ~/.steam holds
+    # registry.vdf (the login, the install paths, per-user client settings) and
+    # the compatibility symlinks older titles still resolve through.
+    #
+    # Cheap insurance rather than a measured requirement, and said plainly:
+    # losing it costs a re-login and some client settings, not a re-download.
+    # The directory is kilobytes, so persisting it is not a trade.
+    ".steam"
     # Wholesale, deliberately: Plasma owns its own config and we declare only
     # the power settings (modules/home/plasma.nix) — everything else it writes
     # here is yours and unmanaged. ~/.config/jj rides along too.
