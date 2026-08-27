@@ -281,7 +281,7 @@ switch to the user. New files must be `git add`ed first or the flake cannot see 
   /etc/nixos#nixosConfigurations.<host>.options.<path>.description` gives the docs and
   `…config.<path>` the live value; `nixos-option <path>` also works. `nix eval` is
   allow-listed, so neither prompts.
-- Do not launch interactive TUIs from an agent shell — `nvim`, `jjui`, `fzf` and
-  `zellij attach` among them; the inventory flags the rest in its `purpose` notes.
-  `zellij action` / `zellij run` are scriptable.
+- Do not launch interactive TUIs from an agent shell — `nvim`, `jjui`, `fzf` and a
+  bare `herdr` among them; the inventory flags the rest in its `purpose` notes.
+  herdr's subcommands (`herdr tab`, `herdr pane`, `herdr agent`, …) are scriptable.
 - Persisted paths are listed in `modules/nixos/impermanence.nix` (law 5).

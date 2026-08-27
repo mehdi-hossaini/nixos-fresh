@@ -5,7 +5,7 @@
     "tools[].commands — the executables the entry puts on PATH. Omitted means `[name]`. An empty array means the entry ships no binary under its own name (a bundle or a library).",
     "tools[].package — the nixpkgs attribute or home-manager program name. Must appear in modules/nixos/packages.nix or modules/home/default.nix. null means the entry is not separately declared under its own attribute — the base system, or a command a service option puts on PATH; purpose says which.",
     "not_installed[].names — every command the entry covers, one per element. This is the machine-readable field; there is no `name` here on purpose, so the list cannot drift from its prose.",
-    "tools[].agent_unsafe — commands that hang a session with no terminal. Optional; present only on the interactive entries. Each element is {command, forms}, where forms is \"all\" or \"bare\". \"all\" generates BOTH a bare and a `<name> *` deny — the bare form matters, because ` *` alone does not match the argument-less command that is actually typed. \"bare\" generates ONLY the exact match, for a tool whose subcommands are scriptable and must stay available: `codex` hangs, `codex exec` does not, and emitting `codex *` would deny the useful half while missing the form that hangs. Claude takes these declaratively and Codex through a hook, from this one array, so adding an interactive tool here denies it for both. Use a prefix as the command where the tool needs one: `zellij attach` is unsafe while `zellij action` and `zellij run` are not."
+    "tools[].agent_unsafe — commands that hang a session with no terminal. Optional; present only on the interactive entries. Each element is {command, forms}, where forms is \"all\" or \"bare\". \"all\" generates BOTH a bare and a `<name> *` deny — the bare form matters, because ` *` alone does not match the argument-less command that is actually typed. \"bare\" generates ONLY the exact match, for a tool whose subcommands are scriptable and must stay available: `codex` hangs, `codex exec` does not, and emitting `codex *` would deny the useful half while missing the form that hangs. Claude takes these declaratively and Codex through a hook, from this one array, so adding an interactive tool here denies it for both. Use a multi-word prefix as the command where the tool needs one, so only the hanging subcommand is denied and the scriptable siblings stay available. Nothing declares one at present — zellij did, and was removed — but the field is what makes that expressible without hand-writing a rule beside this file."
   ],
   "machine": {
     "hostname": "nixos-machine",
@@ -285,22 +285,10 @@
       ]
     },
     {
-      "name": "zellij",
-      "package": "zellij",
-      "category": "terminal",
-      "purpose": "Terminal multiplexer — the tabs Alacritty deliberately lacks, and Alacritty's shell (modules/home/default.nix), so a terminal window is already inside a session. Starts in locked mode by design (zellij/config.kdl): it forwards every key so neovim keeps its Ctrl chords, holding only Alt+t for a new tab, Alt+Left/Right to switch, and F12 to reach the rest (not Alt+Space, which is KRunner's). Can be driven non-interactively via `zellij action` / `zellij run`.",
-      "agent_unsafe": [
-        {
-          "command": "zellij attach",
-          "forms": "all"
-        }
-      ]
-    },
-    {
       "name": "herdr",
       "package": "herdr",
       "category": "terminal",
-      "purpose": "Agent multiplexer — a background rust server that keeps coding-agent sessions alive independently of the terminal that launched them, marking every pane working / blocked / idle. Complements zellij rather than replacing it: zellij multiplexes panes in one window and dies with it, herdr multiplexes agents and survives. Config in ~/.config/herdr, state in ~/.local/state/herdr, worktrees in ~/.herdr — all three persisted (modules/nixos/impermanence.nix). Upstream ships a `curl | sh` installer; nixpkgs carries it, so law 1 needs no exception.",
+      "purpose": "Agent multiplexer, and since 2026-08-27 the terminal one too — it is Alacritty's shell (modules/home/default.nix), so a window arrives already inside a session. A background rust server keeps coding-agent sessions alive independently of the terminal that launched them, marking every pane working / blocked / idle; bare `herdr` launches or attaches to the ONE persistent session, so two windows are two views of it rather than two sessions. It replaced zellij, which multiplexed panes in one window and died with it. Prefix key is F12 rather than upstream's ctrl+b (herdr/config.toml), because vim wants <C-b>. Config in ~/.config/herdr, state in ~/.local/state/herdr, worktrees in ~/.herdr — all three persisted (modules/nixos/impermanence.nix). Subcommands (`herdr tab`, `herdr pane`, `herdr agent`, …) are scriptable; only the bare word is a TUI. Upstream ships a `curl | sh` installer; nixpkgs carries it, so law 1 needs no exception.",
       "notes": "Bare `herdr` starts or reattaches the TUI and hangs a session with no terminal, so it is agent_unsafe with forms \"bare\": `Bash(herdr)` is denied and `Bash(herdr *)` is not. Every subcommand stays available, which is the point — `herdr agent list/read/prompt/wait`, `herdr pane`, and the socket API behind `herdr api` are how an agent is meant to drive it. This entry was dropped on 2026-08-25 when the field could only deny both forms at once, because walling off the CLI cost more than the hang did; forms made the narrow rule expressible and it came back the same day. A skill teaching the CLI is generated from `herdr --skill` at build time and linked into ~/.claude/skills/herdr and ~/.codex/skills/herdr (modules/home/skills.nix) — one source, so it cannot drift from the binary. It gates itself on HERDR_ENV=1 and is inert outside a herdr pane.",
       "agent_unsafe": [
         {

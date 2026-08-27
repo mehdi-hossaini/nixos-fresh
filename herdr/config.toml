@@ -1,8 +1,7 @@
 # herdr's config, declared here rather than left to the copy herdr writes into
-# ~/.config/herdr on first run. Same argument as zellij/config.kdl beside it: a
-# theme is a decision, and a decision belongs in the repo where it can be read,
-# reviewed and reproduced on a fresh machine — not in a generated dump the
-# program owns and rewrites.
+# ~/.config/herdr on first run. A theme and a keybinding are decisions, and a
+# decision belongs in the repo where it can be read, reviewed and reproduced on
+# a fresh machine — not in a generated dump the program owns and rewrites.
 #
 # Only decisions are here. herdr's own --default-config is ~250 lines of
 # commented defaults; copying them in would re-state upstream's choices as if
@@ -30,3 +29,21 @@ onboarding = false
 # not verified, only inferred from the name, and law 6 is precisely about that
 # gap. One word here if it turns out to be what is wanted.
 name = "gruvbox"
+
+[keys]
+# F12, not upstream's ctrl+b. herdr claims exactly one chord and routes
+# everything else through it, which is already the right shape — but the one it
+# picks by default is a key vim wants: <C-b> is page-up. Every other terminal
+# program keeps its chords either way; this moves the single collision.
+#
+# F12 rather than something closer to hand because KDE gets the keyboard first,
+# and it takes Alt+Space (KRunner) and Alt+backtick before either reaches the
+# terminal. `kglobalshortcutsrc` will not tell you that — it holds only the
+# shortcuts you have customised. Ask the live registry: `qdbus
+# org.kde.kglobalaccel` lists the components and `allShortcutInfos` on each
+# returns the Qt key codes actually held.
+#
+# This is the same decision zellij's config.kdl made here before it, by a
+# different mechanism: zellij claimed nine Ctrl chords and needed a locked mode
+# to give them back, herdr claims one and needs it moved.
+prefix = "f12"

@@ -52,13 +52,12 @@
     })
     alacritty
     # Alacritty has no tabs by design, so the multiplexer is not optional here —
-    # without it you get one OS window per task.
-    zellij
-    # The agent half of the same problem. zellij multiplexes panes; herdr
-    # multiplexes *agents* — one rust binary that keeps their sessions alive as a
+    # without it you get one OS window per task. herdr is that multiplexer as
+    # well as the agent one: a rust binary that keeps sessions alive as a
     # background server, marks every pane working / blocked / idle, and survives
-    # the terminal that started it. That last part is what a zellij tab cannot
-    # do: closing the window ends the agent with it.
+    # the terminal that started it. zellij held the first job here until
+    # 2026-08-27 and could not do the second — closing the window ended the
+    # agent with it — so keeping both was paying twice for one answer.
     #
     # Packaged in nixpkgs, so law 1 is satisfiable without the `curl | sh` its
     # README leads with. 0.8.2 as of 2026-08-26, which is upstream's current — the

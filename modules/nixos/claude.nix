@@ -123,7 +123,7 @@ let
   # a way that costs anything — it is the one hook here that only reports. Codex
   # has its own `notify` key in config.toml and would not take this shape anyway.
   #
-  # What it buys: a session in another zellij tab, or behind a browser window,
+  # What it buys: a session in another herdr tab, or behind a browser window,
   # stops being invisible when it blocks. Claude Code already emits the event —
   # `notification_type` distinguishes an agent that finished from one waiting on
   # an answer — and Plasma 6 already runs a notification daemon on the session

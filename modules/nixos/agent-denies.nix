@@ -44,8 +44,8 @@ rec {
   # Each entry says WHICH forms hang, because the two cases are genuinely
   # different and one pattern cannot express both:
   #
-  #   forms = "all"   the whole command is a TUI. `nvim`, `fzf`, `jjui`, and
-  #                   `zellij attach`. Both patterns, for the same reason the jj
+  #   forms = "all"   the whole command is a TUI. `nvim`, `fzf` and `jjui`.
+  #                   Both patterns, for the same reason the jj
   #                   group carries both — `btop *` does not match a bare `btop`,
   #                   which is the form actually typed. Claude ran with only the
   #                   ` *` variant until 2026-08-24.

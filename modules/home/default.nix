@@ -246,16 +246,20 @@ in
 
       # ── Behaviour ───────────────────────────────────────────────────────
       # Alacritty has no tabs and upstream has refused them for years — the
-      # answer it gives is "run a multiplexer", and zellij is already installed
+      # answer it gives is "run a multiplexer", and herdr is already installed
       # here for precisely that (tools.json: "the tabs Alacritty deliberately
       # lacks"). Running it *as* the shell is what makes that answer actually
-      # load, instead of it depending on remembering to type `zellij` first.
+      # load, instead of it depending on remembering to type `herdr` first.
       #
-      # Bare, with no `attach`: each window gets its own session, so two windows
-      # are independent rather than mirroring one another's panes. `alacritty -e
-      # <cmd>` still bypasses this entirely when a raw shell is wanted.
+      # Bare, which for herdr means "launch or attach to the persistent session"
+      # (`herdr --help`): every window is a view of ONE session, not its own.
+      # That is the opposite of what bare `zellij` did here until 2026-08-27, and
+      # it is the trade herdr is worth — the session outlives the window, so
+      # closing a terminal no longer kills the agent inside it. `herdr --session
+      # <name>` is the escape hatch when a genuinely separate one is wanted, and
+      # `alacritty -e <cmd>` still bypasses the multiplexer entirely.
       terminal.shell = {
-        program = "${pkgs.zellij}/bin/zellij";
+        program = "${pkgs.herdr}/bin/herdr";
         args = [ ];
       };
 
@@ -506,16 +510,10 @@ in
     "nvim/lua/config".source = ../../nvim/lua/config;
     "nvim/lua/plugins".source = ../../nvim/lua/plugins;
 
-    # zellij wrote its own 20 KB default dump here on first run — undeclared
-    # state for a program that is the shell of every terminal window. This
-    # replaces it with the keybinding decision, which is a rule and belongs in
-    # the repo. Not merged into a `programs.zellij` module because zellij stays
-    # in packages.nix and adding the module would install a second copy.
-    "zellij/config.kdl".source = ../../zellij/config.kdl;
-
-    # herdr, for the same reason as zellij directly above — and it had not
-    # written its config yet when this landed, so nothing had to be moved aside.
-    # The file holds the theme and the onboarding answer and nothing else;
+    # herdr writes its own config into ~/.config/herdr on first run — undeclared
+    # state for a program that is the shell of every terminal window. Declaring
+    # it makes the decisions in it rules that live in the repo. It holds the
+    # theme, the onboarding answer and the prefix key and nothing else;
     # /etc/nixos/herdr/config.toml says why each is there.
     #
     # The cost, stated plainly: `herdr config reset-keys` cannot work against a
@@ -551,8 +549,8 @@ in
   };
 
   # `ls` was still coreutils. eza sat in packages.nix for eleven days with no
-  # alias, so nothing ever reached for it — the same failure zellij had, and it
-  # is visible in this machine's own history: `ls` 599 times, `eza` zero. The
+  # alias, so nothing ever reached for it — a declared tool wired to no habit,
+  # visible in this machine's own history: `ls` 599 times, `eza` zero. The
   # fish integration is the whole fix, because it puts the tool inside a habit
   # that already exists rather than asking for a new one (ls/ll/la/lt/lla).
   #

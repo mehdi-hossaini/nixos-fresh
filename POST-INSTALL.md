@@ -159,8 +159,8 @@ its directory.
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
-| **Packages** | `brave-origin alacritty zellij claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma` + nix-ld. `jjui eza fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
-| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into zellij — Alacritty has no tabs), fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
+| **Packages** | `brave-origin alacritty herdr claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma` + nix-ld. `jjui eza fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into herdr — Alacritty has no tabs), fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=nvim`, `CLAUDE_CONFIG_DIR` |
 
 ## Varies per machine — `hosts/<name>/`
@@ -313,35 +313,30 @@ and `tree-sitter` are on the neovim wrapper's PATH and nowhere else, so treesitt
 can compile its 27 parsers and mason can unpack a language server without a system
 compiler existing to shadow a project's pinned one.
 
-**Alacritty has no tabs — so it opens into zellij instead.** `terminal.shell` in
-`modules/home/default.nix` makes zellij the shell, so a window arrives already
-inside a multiplexer. Bare, with no `attach`, so two windows are two independent
-sessions rather than two views of one. `alacritty -e <cmd>` still bypasses it when
-a raw shell is wanted.
+**Alacritty has no tabs — so it opens into herdr instead.** `terminal.shell` in
+`modules/home/default.nix` makes herdr the shell, so a window arrives already
+inside a multiplexer. Bare, which for herdr means *launch or attach to the
+persistent session*: every window is a view of one session, not its own. That is
+the trade — the session outlives the window, so closing a terminal no longer kills
+the agent inside it. `herdr --session <name>` makes a separate one when that is
+actually wanted, and `alacritty -e <cmd>` bypasses the multiplexer entirely.
 
-It starts **locked** (`zellij/config.kdl`), which is what keeps it out of neovim's
-way. zellij's defaults claim nine Ctrl chords — `b g h n o p q s t` — and LazyVim
-binds `<C-h>` and `<C-s>` while vim itself wants `<C-o>`, `<C-n>`, `<C-p>` and
-`<C-b>`. Locked mode forwards all of them and holds four keys only:
+herdr claims **one** chord and routes everything else through it, so neovim keeps
+its keys structurally rather than by being handed them back. The prefix is moved
+to **F12** in `herdr/config.toml`; upstream's default is `Ctrl+b`, which is vim's
+page-up. From there `F12 c` is a new tab, `F12 1..9` switches, `F12 v` and `F12 -`
+split, `F12 Tab` cycles panes — `herdr --default-config` lists the rest.
 
-| `Alt+t` | new tab |
-| `Alt+Left` / `Alt+Right` | previous / next tab |
-| `F12` | unlock for everything else — then `t` tabs, `p` panes, `n` resize, `o` session, `s` scroll; `F12` again to relock |
-
-The unlock key is F12 rather than something more natural because KDE gets the
-keyboard first. Alt+Space is KRunner's and never reaches the terminal, and so is
-Alt+`` ` ``. Checking `kglobalshortcutsrc` will not tell you that — it holds only
-shortcuts you have customised. Ask the live registry instead: `qdbus
-org.kde.kglobalaccel` lists the components, and `allShortcutInfos` on each returns
-the Qt key codes actually held (141 of them here).
+F12 rather than something more natural because KDE gets the keyboard first.
+Alt+Space is KRunner's and never reaches the terminal, and so is Alt+`` ` ``.
+Checking `kglobalshortcutsrc` will not tell you that — it holds only shortcuts you
+have customised. Ask the live registry instead: `qdbus org.kde.kglobalaccel` lists
+the components, and `allShortcutInfos` on each returns the Qt key codes actually
+held (141 of them here).
 
 If tabs ever feel like they need less than one keypress, the structural answer is
-kitty, whose native tabs sit on `Ctrl+Shift+*` where no terminal program looks.
-
-zellij was installed for exactly this job on day one and wired to nothing for
-eleven days. If the multiplexer itself grates rather than the missing tabs,
-`programs.alacritty` → `programs.kitty` is still a two-line change, and kitty has
-tabs natively.
+kitty, whose native tabs sit on `Ctrl+Shift+*` where no terminal program looks —
+`programs.alacritty` → `programs.kitty` is a two-line change.
 
 # Not installed, on purpose
 
@@ -397,7 +392,10 @@ on PATH — removing the package only stopped declaring a second, shadowed copy.
 zellij sat on `PATH` for eleven days without running once. It was added in a
 batch commit, given a purpose line in `tools.json` describing it as "the tabs
 Alacritty deliberately lacks", and then wired to nothing — its config file was
-born on first use, eleven days after the package landed.
+born on first use, eleven days after the package landed. Wiring it up as
+Alacritty's shell fixed the usage problem and exposed a second one: herdr, added
+later, did the same job *and* outlived the window. Two packages for one answer,
+so zellij was removed on 2026-08-27 and herdr took the shell.
 
 Measured across this machine's own history — 10,354 commands from agent
 transcripts, 72 from shell history — the same held elsewhere: `ast-grep`, `btop`,
