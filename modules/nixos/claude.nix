@@ -529,7 +529,40 @@ let
         "Bash(nh os build)"
         "Bash(nh os build *)"
         "Bash(bash ~/.claude/check-conventions.sh)"
+        # Process and socket inspection, added 2026-08-27 on a re-count of the same
+        # corpus: 12,737 Bash calls across 193 transcripts. `ps` 126, `pgrep` 108 —
+        # both earned their place. `ss` 18, which is thin, and it is here anyway
+        # because the argument for it is not the count: none of the three can write
+        # anything, take a command to run, or reach the network. There is no wide
+        # grant to fence afterwards, which is the shape the note below asks for.
+        # Bare `ps` and bare `ss` list something; bare `pgrep` errors, so it gets
+        # the starred form only.
+        "Bash(ps)"
+        "Bash(ps *)"
+        "Bash(pgrep *)"
+        "Bash(ss)"
+        "Bash(ss *)"
       ];
+
+      # What the same re-count argued AGAINST, recorded so the next pass does not
+      # re-derive it. The four commands that would buy the most reviewed-path
+      # relief are all unsafe to allowlist by construction, not by oversight:
+      #
+      #   timeout      400 calls, and it runs whatever follows it
+      #   nix shell    119, the law-1 borrow verb — arbitrary code, by design
+      #   curl          73, network, and -o writes
+      #   nix fmt       62, formats in place
+      #
+      # `nix build --no-link` (36) is the near miss: it changes no system state,
+      # but unlike `nh os build` it takes any flake ref, so it builds arbitrary
+      # remote code. `gh` reads (`gh auth status`, `gh repo view`) are genuinely
+      # read-only but total under 20 calls, and `gh api` sits in the same command
+      # with -X POST available, so no `gh` rule is worth its fence yet.
+      #
+      # The finding worth carrying: this list already covers the machine's real
+      # exploration surface. What still meets the classifier is the set that
+      # cannot be pre-approved without granting execution, so the remaining
+      # friction is the design working rather than a gap to close.
 
       # A smell to watch, not a rule to enforce: an allow rule that needs deny rules
       # to fence it was too wide to begin with. `Bash(fd *)` granted everything fd
