@@ -109,10 +109,10 @@ looking authoritative — `check-conventions.sh` fails any project file repeatin
 ten lines of this one, so a duplicated rule is caught rather than obeyed.
 
 **Skills split the same way.** A global one is declared by this repo and reaches
-`~/.claude/skills/` as a store symlink, either written into `/etc/nixos/claude/skills/`
-or pulled from a flake input — `modules/home/skills.nix` does the latter for
-`mattpocock/skills` and `ponytail`, and links the second into `~/.codex/skills/` as
-well, because it carries a manifest for both agents. One that applies to a single
+`~/.claude/skills/` as a store symlink, either written into `/etc/nixos/claude/skills/`,
+pulled from a flake input, or generated at build time — `modules/home/skills.nix` does
+all three, and links into `~/.codex/skills/` as well any skill that has been checked
+against Codex rather than assumed to work there. One that applies to a single
 project lives in that project's `.claude/skills/`, committed there — declared, just
 not by this one. Nothing under either skills directory is hand-written, and the check
 asserts it for both — excepting `~/.codex/skills/.system/`, which Codex populates
@@ -121,9 +121,9 @@ side of law 4.
 
 **A bundle carrying `.claude-plugin/plugin.json` is linked whole, never flattened.**
 Such a directory loads as `<name>@skills-dir` and its skills are namespaced
-(`/mattpocock-skills:code-review`). Unpacking it into one entry per skill throws the
-namespace away and manufactures collisions with built-ins that the plugin form does
-not have.
+(`/<name>:code-review`). Unpacking it into one entry per skill throws the namespace
+away and manufactures collisions with built-ins that the plugin form does not have.
+Nothing is currently linked that way; the rule is what to do when something is.
 
 ## Version control: jj in front, git behind
 

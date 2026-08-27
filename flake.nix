@@ -57,29 +57,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Claude Code skills, MIT. `flake = false` because it is a content repo, not a
-    # flake — `nix flake update` re-locks it, so there is no hand-written rev to go
-    # stale. modules/home/skills.nix reads the curated list out of its
-    # .claude-plugin/plugin.json rather than enumerating the directory, because the
-    # repo also carries skills/deprecated/ that the manifest deliberately omits.
-    mattpocock-skills = {
-      url = "github:mattpocock/skills";
-      flake = false;
-    };
-
-    # github.com/DietrichGebert/ponytail (MIT). Same `flake = false` reasoning as
-    # the input above: a content repo, re-locked by `nix flake update`, with no
-    # hand-written rev to go stale. modules/home/skills.nix links it for both
-    # agents and explains the one thing that cannot be linked as-is.
-    ponytail = {
-      url = "github:DietrichGebert/ponytail";
-      flake = false;
-    };
-
-    # github.com/anthropics/skills — Anthropic's official skill repo. Same
-    # `flake = false` reasoning as the two inputs above: a content repo,
-    # re-locked by `nix flake update`. Only the four document skills are linked;
-    # modules/home/skills.nix says why one by one rather than as a bundle.
+    # github.com/anthropics/skills — Anthropic's official skill repo.
+    # `flake = false` because it is a content repo, not a flake — `nix flake update`
+    # re-locks it, so there is no hand-written rev to go stale. Only the four document
+    # skills are linked; modules/home/skills.nix says why one by one, not as a bundle.
     anthropic-skills = {
       url = "github:anthropics/skills";
       flake = false;

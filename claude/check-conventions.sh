@@ -34,7 +34,7 @@ SETTINGS=${SETTINGS:-$HOME/.claude/settings.json}
 MANAGED=${MANAGED:-/etc/claude-code/managed-settings.json}
 IMPERMANENCE=${IMPERMANENCE:-/etc/nixos/modules/nixos/impermanence.nix}
 REPO=${REPO:-/etc/nixos}
-# Both agents' skills directories. ponytail is linked into each under the same rule,
+# Both agents' skills directories. herdr is linked into each under the same rule,
 # and a check covering only the first would assert less than the prose claims — the
 # same way GUARDS did after the guards were factored out.
 read -r -a SKILLS <<<"${SKILLS:-$HOME/.claude/skills $HOME/.codex/skills}"

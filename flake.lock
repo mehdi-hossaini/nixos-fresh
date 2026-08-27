@@ -149,22 +149,6 @@
         "type": "github"
       }
     },
-    "mattpocock-skills": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1787581197,
-        "narHash": "sha256-N5tpUIHO2VFeJntBTl6/VLDIVpqoshwFxNJlfXXUwsQ=",
-        "owner": "mattpocock",
-        "repo": "skills",
-        "rev": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76",
-        "type": "github"
-      },
-      "original": {
-        "owner": "mattpocock",
-        "repo": "skills",
-        "type": "github"
-      }
-    },
     "nix-index-database": {
       "inputs": {
         "nixpkgs": [
@@ -240,22 +224,6 @@
         "type": "github"
       }
     },
-    "ponytail": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1786139041,
-        "narHash": "sha256-bGdXvzhWPwGdz3T2Yh2h6lf+3PBRFAfdBxP5pESmCHI=",
-        "owner": "DietrichGebert",
-        "repo": "ponytail",
-        "rev": "2ed6c52c9d7e5e56942508591085fd45dea277d3",
-        "type": "github"
-      },
-      "original": {
-        "owner": "DietrichGebert",
-        "repo": "ponytail",
-        "type": "github"
-      }
-    },
     "prismlauncher-cracked": {
       "inputs": {
         "libnbtplusplus": "libnbtplusplus",
@@ -284,11 +252,9 @@
         "git-hooks": "git-hooks",
         "home-manager": "home-manager",
         "impermanence": "impermanence",
-        "mattpocock-skills": "mattpocock-skills",
         "nix-index-database": "nix-index-database",
         "nixpkgs": "nixpkgs_2",
         "plasma-manager": "plasma-manager",
-        "ponytail": "ponytail",
         "prismlauncher-cracked": "prismlauncher-cracked",
         "treefmt-nix": "treefmt-nix"
       }
