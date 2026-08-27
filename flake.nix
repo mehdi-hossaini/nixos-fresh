@@ -57,15 +57,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # github.com/anthropics/skills — Anthropic's official skill repo.
-    # `flake = false` because it is a content repo, not a flake — `nix flake update`
-    # re-locks it, so there is no hand-written rev to go stale. Only the four document
-    # skills are linked; modules/home/skills.nix says why one by one, not as a bundle.
-    anthropic-skills = {
-      url = "github:anthropics/skills";
-      flake = false;
-    };
-
     prismlauncher-cracked = {
       url = "github:Diegiwg/PrismLauncher-Cracked";
       inputs.nixpkgs.follows = "nixpkgs";

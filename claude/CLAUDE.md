@@ -109,10 +109,11 @@ looking authoritative — `check-conventions.sh` fails any project file repeatin
 ten lines of this one, so a duplicated rule is caught rather than obeyed.
 
 **Skills split the same way.** A global one is declared by this repo and reaches
-`~/.claude/skills/` as a store symlink, either written into `/etc/nixos/claude/skills/`,
-pulled from a flake input, or generated at build time — `modules/home/skills.nix` does
-all three, and links into `~/.codex/skills/` as well any skill that has been checked
-against Codex rather than assumed to work there. One that applies to a single
+`~/.claude/skills/` as a store symlink — written into `/etc/nixos/claude/skills/`,
+pulled from a flake input, or generated at build time, whichever keeps the skill and
+its source one thing rather than two. `modules/home/skills.nix` holds them, and links
+into `~/.codex/skills/` as well any skill checked against Codex rather than assumed to
+work there. One that applies to a single
 project lives in that project's `.claude/skills/`, committed there — declared, just
 not by this one. Nothing under either skills directory is hand-written, and the check
 asserts it for both — excepting `~/.codex/skills/.system/`, which Codex populates
