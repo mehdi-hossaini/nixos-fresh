@@ -40,9 +40,20 @@ let
 in
 {
   # Generated above rather than authored: see herdrSkill. It loads flat as
-  # /herdr and gates itself on HERDR_ENV=1, so it is inert in a session that
-  # is not running inside a herdr pane — which is every session until you
-  # start one.
+  # /herdr and checks HERDR_ENV=1 before it will touch anything — but that
+  # gate excludes far less than it reads like it does. Since 2026-08-27
+  # herdr is Alacritty's shell (modules/home/default.nix), so every terminal
+  # window arrives already inside a pane with the variable set, this session
+  # included. It still catches what is not a terminal at all — a cron run, a
+  # cloud agent — which is why it is left in place rather than argued away,
+  # but it is not what keeps the skill from firing unasked.
+  #
+  # That job belongs to the description herdr --skill writes, which says to
+  # use the skill only when Herdr is explicitly named. The description is
+  # therefore the standing cost: it sits in every session's prompt whether
+  # or not the skill is ever invoked, and only the body is deferred until it
+  # is. Roughly ninety tokens a session, which is the number to weigh if
+  # dropping the skill is ever on the table.
   home.file.".claude/skills/herdr".source = herdrSkill;
   home.file.".codex/skills/herdr".source = herdrSkill;
 }
