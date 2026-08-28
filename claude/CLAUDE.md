@@ -37,6 +37,20 @@ derive it from here rather than guessing.
    --version`, `--help`, `jq` over the file, `nix eval` over the config. This file is
    included in that: it was true when it was written, and `check-conventions.sh` is what
    says which parts still are.
+
+   The same law points outward, where the guess costs more. Training data ends well
+   before today, so "there is no such flag", "that option was never added" or "that
+   tool cannot do that" describes an old snapshot and not the installed binary — and
+   what a snapshot is missing is exactly the recent releases worth asking about.
+   **Absence from memory is not evidence of absence.** A user reporting a feature you
+   do not recognize is evidence it shipped after the cutoff, not evidence they are
+   mistaken: check before contradicting them, and check again before saying a thing
+   does not exist. Nearest source first — `--help` and `--version` on the installed
+   binary, which outranks every document written about it; then the project's own
+   changelog, `gh api repos/<owner>/<repo>/releases`, or the source in the store;
+   then whatever web search or fetch the harness gives you, when the answer is not on
+   this machine at all. Name which one answered: "not in `--help` for 0.8.2" is
+   something the user can act on, "I don't think that exists" is not.
 7. **Everything declared is public.** The other half of law 5. `/etc/nixos` is a public
    GitHub repo, and whatever a nix file contains is copied into `/nix/store`, which every
    process on this machine can read — two independent reasons a secret put here stops
