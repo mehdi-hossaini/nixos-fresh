@@ -1,11 +1,11 @@
-# Plasma's power settings, declared.
+# Plasma's power settings and the panel's removal, declared.
 #
-# Scope is deliberately narrow: powerdevil, nothing else.
+# Scope is deliberately narrow: powerdevil, plus one desktop script.
 # plasma-manager can declare the whole desktop, but `overrideConfig` is left at
-# its default of false, so everything not named here — panels, shortcuts,
-# theming — stays hand-editable in System Settings and is simply persisted like
-# before. Widening this file further is a decision to stop clicking those, and
-# it is not made here.
+# its default of false, so everything not named here — shortcuts, theming, the
+# widget layout — stays hand-editable in System Settings and is simply persisted
+# like before. Widening this file is a decision to stop clicking those, and it is
+# made one entry at a time rather than by flipping overrideConfig.
 #
 # window-rules is where that split would leak, and none is declared here now —
 # the one rule this file held kept sticky's notes above other windows, and went
@@ -74,6 +74,29 @@
         # is the difference between a clean stop at ~5% and the hard power cut
         # you get at 0%. Turning it off buys minutes and risks the filesystem.
       };
+
+    # No panel. plasma-manager runs this through
+    # `qdbus org.kde.plasmashell /PlasmaShell evaluateScript` at login
+    # (its modules/startup.nix), which is the same call that removed the panel
+    # by hand — so what is declared here is exactly what was done live.
+    #
+    # `programs.plasma.panels = [ ]` would be the obvious spelling and does
+    # nothing: modules/panels.nix gates the whole module on
+    # `anyPanelSet = (builtins.length cfg.panels) > 0`, so an empty list means
+    # "panels unmanaged", not "no panels". A script is the only narrow way to
+    # say it without taking ownership of the entire Plasma config.
+    #
+    # runAlways, because the alternative is worse in both directions: without
+    # it the script runs only when its own text changes, so a fresh machine
+    # that has never run it is fine but a panel added later survives forever.
+    # The cost is the mirror image, and it is the thing to remember here — a
+    # panel added by hand in System Settings is deleted at the next login, with
+    # no message saying why. Delete this block to get panels back, not
+    # `Add Panel`.
+    startup.desktopScript."no-panel" = {
+      text = "panels().forEach(panel => panel.remove())";
+      runAlways = true;
+    };
 
   };
 }
