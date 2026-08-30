@@ -415,6 +415,13 @@
       "category": "shell",
       "purpose": "Base-system commands, always present. `curl` lives here — there is no wget.",
       "notes": "Not a nixpkgs attribute of its own, hence package: null. The bundle name is not itself a command; the `commands` array is what exists on PATH. rsync and strace ride in via NixOS's environment.defaultPackages rather than any list in this repo — present by default, listed here so the inventory stops under-promising what PATH actually holds."
+    },
+    {
+      "name": "appflowy",
+      "package": "appflowy",
+      "category": "desktop",
+      "purpose": "Standalone task and project tracker — boards, database views and documents, the Notion/Linear shape. Flutter over a Rust core, so a native window rather than Electron. Local-first: the data folder is under ~/.local/share, which impermanence persists wholesale, and no account is required. GUI only; the `appflowy` binary takes no useful arguments and opens the app, so it is not something to reach for from a shell.",
+      "notes": "Dual-licensed AGPL-3.0 plus an unfree-redistributable asset bundle; allowUnfree in modules/nixos/nix.nix already covers it. Chosen over self-hosting Vikunja, Plane or Huly, all of which are web apps behind a local port."
     }
   ],
   "not_installed": [

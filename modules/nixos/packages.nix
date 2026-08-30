@@ -77,6 +77,28 @@
     # Obsidian's own config sits in ~/.config/obsidian and rides along with the
     # wholesale .config entry there.
     obsidian
+    # Tasks and projects, as a desktop app rather than a browser tab. A Flutter
+    # front end over a Rust core, so it is a real window and not an Electron
+    # one, and the shape is the one Linear and Notion share: boards, database
+    # views with custom fields, and documents.
+    #
+    # A Vikunja service was built here first and reverted before it was ever
+    # committed — a Go server on localhost:3456, reached through the browser,
+    # which is precisely what was not wanted. Recorded rather than dropped, so
+    # "just self-host a small tracker" reads as tried rather than unconsidered.
+    #
+    # Nothing for impermanence.nix, which is worth saying because most entries
+    # in this file needed something. AppFlowy's data folder sits under
+    # ~/.local/share — `AppFlowy/data`, or `io.appflowy.appflowy/` depending on
+    # version and packaging — and that directory is already persisted wholesale.
+    # Both names are below it, so the entry covers either. What is NOT covered
+    # is a folder moved elsewhere from Settings › Manage data: point that at
+    # ~/Documents or ~/Projects, never the home root.
+    #
+    # The licence is dual, AGPL-3.0 plus an unfree-redistributable asset bundle.
+    # allowUnfree in modules/nixos/nix.nix already covers it and is not restated
+    # here, on the same argument as programs.steam.
+    appflowy
     prismlauncher
 
     claude-code
