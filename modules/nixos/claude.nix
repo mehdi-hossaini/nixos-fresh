@@ -227,7 +227,24 @@ let
   # Built from settings.hooks.PreToolUse rather than from a list, for the same
   # reason wiredGuards above is: a guard that is written and never attached must
   # not be able to appear here and pass three laws it is not actually subject to.
-  preToolUseCommands = lib.concatMap (m: map (h: h.command) m.hooks) settings.hooks.PreToolUse;
+  preToolUseHooks = lib.concatMap (m: m.hooks) settings.hooks.PreToolUse;
+  preToolUseCommands = map (h: h.command) preToolUseHooks;
+
+  # Every `if` this file attaches to a given guard, so the guard's own declared
+  # offTrigger can be checked against them. null rather than [ ] for a hook with
+  # no `if`: the two mean opposite things here — "everything reaches this guard"
+  # and "nothing does" — and collapsing them is how the check below would come
+  # back green on the one case it exists to catch.
+  #
+  # A guard attached under several matcher groups (publishGate is, under three)
+  # is reachable through the UNION of their `if`s, so this collects across the
+  # flattened list rather than per group.
+  ifsFor =
+    command:
+    let
+      attached = lib.filter (h: h.command == command) preToolUseHooks;
+    in
+    if lib.any (h: !(h ? "if")) attached then null else map (h: h."if") attached;
 
   replayEntries = map (
     name:
@@ -235,6 +252,7 @@ let
     // {
       inherit name;
       command = "${guards.${name}}";
+      ifs = ifsFor "${guards.${name}}";
     }
   ) (lib.filter (n: lib.elem "${guards.${n}}" preToolUseCommands) (lib.attrNames guards.replay));
 
@@ -243,6 +261,47 @@ let
   # that into a build failure rather than a green run over a smaller set than it
   # appears to cover.
   undeclaredHooks = lib.subtractLists (map (e: e.command) replayEntries) preToolUseCommands;
+
+  # The other half of that, and the half that had actually gone wrong. A guard
+  # declares the substrings it has an opinion about; Claude filters each hook with
+  # an `if` BEFORE the guard forks, so a verb with no matching `if` never reaches
+  # the guard that judges it — and claude/replay-guards.sh cannot see that, because
+  # it feeds the script directly and never learns what was filtering it.
+  #
+  # publishGate spent from 2026-08-26 in exactly that state. agent-guards.nix
+  # widened its trigger to `jj new`, `jj squash` and `jj split` — the verbs that
+  # make working-copy content permanent as `@-`, which is the whole point of the
+  # widening — while this file went on attaching it to `jj commit` and
+  # `jj git push` alone. The three verbs the fix was FOR paid no gitleaks scan,
+  # and the replay reported green over all three because the guard itself was
+  # right. Codex was never affected: requirements.toml has no per-hook `if`, so
+  # its copy of the same guard fired on every Bash call.
+  #
+  # `if` is a hard filter, read out of the installed binary rather than the docs
+  # (law 6): claude-code 2.1.245 logs "Skipping hook due to if condition … not
+  # matching" and drops the hook.
+  #
+  # The test is a PREFIX one, and deliberately weaker than it could be: an `if`
+  # matches from the start of a command segment while an offTrigger is a
+  # substring the harness looks for anywhere, so this proves a verb HAS a filter
+  # rather than that the filter is exactly right. That is the failure that
+  # happened; a cleverer check would be asserting something nothing has gone
+  # wrong at yet.
+  unreachableTriggers = lib.concatMap (
+    e:
+    if e.ifs == null then
+      [ ]
+    else
+      let
+        # `Bash(jj new *)` → `jj new *`. An `if` in some other vocabulary is left
+        # as it is, so it fails the prefix test and fails the build — loud is the
+        # right direction for a filter this cannot read.
+        inner = map (i: lib.removeSuffix ")" (lib.removePrefix "Bash(" i)) e.ifs;
+      in
+      map (t: "${e.name}: \"${t}\" is matched by none of ${lib.concatStringsSep ", " e.ifs}") (
+        lib.filter (t: !(lib.any (p: lib.hasPrefix t p) inner)) e.offTrigger
+      )
+  ) replayEntries;
 
   settings = {
     # Anthropic's built-in Concise style: leads with the result, drops preamble and
@@ -349,6 +408,42 @@ let
               command = publishGate;
               timeout = 180;
               statusMessage = "Gating the push on gitleaks + nix flake check";
+            }
+            # The three verbs that make working-copy content permanent without
+            # publishing it. In jj the working copy IS a commit, so these do not
+            # CREATE one — they stop `@` from being amended further and leave the
+            # content behind as `@-`, which is the moment a secret stops being
+            # recoverable by amendment. publishGate's own trigger has named them
+            # since 2026-08-26 and this file did not, so the guard ran only for
+            # `jj commit` and `jj git push` and the escape it was widened to close
+            # — write a secret, `jj new`, delete it, push — stayed open on this
+            # agent. unreachableTriggers above is what makes that unrepresentable
+            # rather than a thing to notice twice.
+            #
+            # Only tier one runs here: the guard's second `requires` narrows the
+            # flake check to the two publishing verbs, so these pay ~0.22s of
+            # gitleaks and exit. The timeout is still 180 to match the groups
+            # above — a compound like `jj new && jj commit -m x` matches an `if`
+            # in both groups, and a shorter ceiling here would abort the shared
+            # script mid-flake-check on the very command that needs it most.
+            #
+            # Bare beside starred wherever the bare form does something, the same
+            # rule the rest of this file follows: bare `jj new` and bare
+            # `jj squash` both act and neither needs an editor to do it, so the
+            # editor pin does not cover them the way it covers bare `git commit`.
+            # `jj split` gets only the starred form — bare, it opens the diff
+            # editor and agent-denies.nix already refuses it.
+            ++ mkHooks {
+              ifs = [
+                "Bash(jj new)"
+                "Bash(jj new *)"
+                "Bash(jj squash)"
+                "Bash(jj squash *)"
+                "Bash(jj split *)"
+              ];
+              command = publishGate;
+              timeout = 180;
+              statusMessage = "Scanning for secrets before this content becomes permanent";
             }
             ++ mkHooks {
               ifs = [
@@ -616,6 +711,19 @@ in
         + lib.concatStringsSep "\n  " undeclaredHooks
         + "\nDeclare offTrigger and routes for each, or claude/replay-guards.sh "
         + "reports green over a set that does not include them.";
+    }
+    {
+      assertion = unreachableTriggers == [ ];
+      message =
+        "claude.nix attaches guards behind `if` filters that cannot reach some of "
+        + "the offTriggers those guards declare in agent-guards.nix:\n  "
+        + lib.concatStringsSep "\n  " unreachableTriggers
+        + "\nThe guard would judge these commands correctly and never be handed one: "
+        + "claude-code drops a hook whose `if` does not match, before the script "
+        + "forks. Add the missing `if` (bare beside starred where the bare form "
+        + "does something), or narrow the guard's offTrigger to what it is "
+        + "actually wired for. claude/replay-guards.sh cannot catch this — it "
+        + "feeds the script directly.";
     }
     {
       assertion = lib.versionAtLeast pkgs.claude-code.version "2.1.238";

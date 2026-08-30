@@ -404,6 +404,13 @@ let
     // {
       inherit name;
       command = "${allGuards.${name}}";
+      # Always null, and not an omission: claude.nix records the `if` filters each
+      # guard sits behind so a build can assert every offTrigger is reachable
+      # through one, and requirements.toml has no per-hook `if` to record. null is
+      # that file's vocabulary for "unfiltered — every Bash call reaches this",
+      # which is why the gap that assertion exists to catch cannot occur here.
+      # Written rather than left out so one manifest shape serves both agents.
+      ifs = null;
     }
   ) (lib.filter (n: lib.elem "${allGuards.${n}}" preToolUseCommands) (lib.attrNames replayLaws));
 
