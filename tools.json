@@ -422,6 +422,16 @@
       "category": "desktop",
       "purpose": "Standalone task and project tracker — boards, database views and documents, the Notion/Linear shape. Flutter over a Rust core, so a native window rather than Electron. Local-first: the data folder is under ~/.local/share, which impermanence persists wholesale, and no account is required. GUI only; the `appflowy` binary takes no useful arguments and opens the app, so it is not something to reach for from a shell.",
       "notes": "Dual-licensed AGPL-3.0 plus an unfree-redistributable asset bundle; allowUnfree in modules/nixos/nix.nix already covers it. Chosen over self-hosting Vikunja, Plane or Huly, all of which are web apps behind a local port."
+    },
+    {
+      "name": "geogebra",
+      "package": "geogebra6",
+      "commands": [
+        "geogebra"
+      ],
+      "category": "education",
+      "purpose": "GeoGebra 6 — dynamic geometry, algebra, calculus and spreadsheets in one window. GUI only; the command takes a .ggb file and otherwise just opens the app, so it is not something to reach for from a shell.",
+      "notes": "The attribute is geogebra6 but the binary is plain `geogebra`, hence the explicit commands array. The older `geogebra` attribute (v5) ships the same binary name and must not be declared alongside it. Unfree under GeoGebra's Non-Commercial License Agreement; allowUnfree in modules/nixos/nix.nix covers it."
     }
   ],
   "not_installed": [

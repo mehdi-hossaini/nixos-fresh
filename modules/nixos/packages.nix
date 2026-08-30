@@ -99,6 +99,27 @@
     # allowUnfree in modules/nixos/nix.nix already covers it and is not restated
     # here, on the same argument as programs.steam.
     appflowy
+    # Maths. Dynamic geometry, algebra, calculus and a spreadsheet in one
+    # window — construct a thing, drag a point, watch which relationships hold.
+    #
+    # `geogebra6`, not `geogebra`, and the two cannot both be here: the v5
+    # attribute is still in nixpkgs and ships the SAME /bin/geogebra, so
+    # declaring both is a collision in the profile rather than two versions side
+    # by side. 6 is the current line; 5 is the legacy desktop build.
+    #
+    # Unfree, and worth naming rather than letting allowUnfree quietly cover it:
+    # the licence is GeoGebra's own "Non-Commercial License Agreement", so this
+    # is free to use here and would not be at a job. Not a permit like winboat's
+    # — allowUnfree in modules/nixos/nix.nix already covers it and is not
+    # restated, same argument as programs.steam.
+    #
+    # Electron 43.4.1, which needs no permittedInsecurePackages entry — checked
+    # by building it, not assumed. If a later nixpkgs marks that Electron EOL the
+    # build will fail naming the version, the way winboat.nix describes.
+    #
+    # Nothing for impermanence.nix: an Electron app keeps its state under
+    # ~/.config, persisted wholesale.
+    geogebra6
     prismlauncher
 
     claude-code
