@@ -98,5 +98,25 @@
       runAlways = true;
     };
 
+    # Four desktops, because the panel is gone and this is what replaced it.
+    # With no pager and no task manager, Meta+W (Overview) is the only way to
+    # see what is running, and one full-screen window per desktop is what makes
+    # that legible rather than a pile.
+    #
+    # Number rather than names: plasma-manager derives the count from names
+    # when they are given, but a label is a thing to read and then to maintain,
+    # and the point here is fewer things on screen. Defaults to "Desktop N".
+    #
+    # rows = 1 keeps Overview a single strip. This is also the one setting here
+    # with a casualty: modules/kwin.nix writes Id_1=Desktop_1, Id_2=Desktop_2
+    # and so on — literal strings replacing KWin's own UUIDs. The custom tile
+    # layout in kwinrc is keyed on the old UUID
+    # ([Tiling][76178212-…]), so it is orphaned by this and has to be redrawn
+    # once. Nothing warns about that, which is why it is written down.
+    kwin.virtualDesktops = {
+      number = 4;
+      rows = 1;
+    };
+
   };
 }
