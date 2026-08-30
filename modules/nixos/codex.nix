@@ -37,7 +37,19 @@ let
   # The same derivation claude.nix makes, from the same field, so a tool declared
   # interactive is interactive for both agents or for neither.
   inventory = builtins.fromJSON (builtins.readFile ../../tools.json);
-  agentUnsafe = lib.unique (lib.concatMap (t: t.agent_unsafe or [ ]) inventory.tools);
+  agentUnsafe = lib.unique (
+    lib.concatMap (
+      t:
+      map (
+        e:
+        e
+        // {
+          inherit (t) package;
+          primary = lib.head (t.commands or [ t.name ]);
+        }
+      ) (t.agent_unsafe or [ ])
+    ) inventory.tools
+  );
 
   # How Codex says "I could not tell" — and the reason this file exists rather
   # than a symlink to Claude's settings.
@@ -61,7 +73,12 @@ let
   '';
 
   guards = import ./agent-guards.nix {
-    inherit pkgs jq;
+    inherit
+      pkgs
+      jq
+      lib
+      denies
+      ;
     a = {
       prefix = "codex";
       displayName = "Codex";
@@ -98,21 +115,19 @@ let
         "tool-results/"
         "output_spill"
       ];
+      # False here and true for Claude. Claude's deny list is declarative and
+      # stops at the wrapper, so its commandShapeGuard carries a backstop that
+      # re-runs the deny arms over the unwrapped forms. Codex has no declarative
+      # deny at all — that is why denyGuard below exists — and denyGuard already
+      # runs those arms over `segments`, which unwraps. Emitting the backstop
+      # here too would evaluate one list twice per payload, so the wrapped-form
+      # routes that assert it live on denyGuard's own laws instead.
+      needsWrappedDenyBackstop = false;
       inherit escalateFn;
     };
   };
 
   denies = import ./agent-denies.nix { inherit lib agentUnsafe; };
-
-  # Claude's permissions.deny, as a hook — because Codex has none. A `Bash(<glob>)`
-  # pattern and a shell `case` glob mean the same thing, so the translation is
-  # mechanical: quote the literal runs and leave the `*`s outside, since a case
-  # pattern with a bare space in it is a syntax error rather than a wide match.
-  toCasePattern =
-    p:
-    lib.concatStringsSep "*" (
-      map (s: if s == "" then "" else lib.escapeShellArg s) (lib.splitString "*" p)
-    );
 
   denyGuard = guards.writeGuard "codex-guard-denies" ''
     ${guards.guardPreamble}
@@ -135,13 +150,17 @@ let
     # guard whose explanation ran as a command would be a hole in the wall that
     # explains it. Scoped to the case rather than to the file, so a real SC2016 in
     # the surrounding loop is still caught.
+    #
+    # The arms are agent-guards.nix's `denyCaseArms`, not a second generator that
+    # happens to spell the same thing. This file carried a byte-identical copy of
+    # that expression while the comment beside the shared one already claimed
+    # "one translation, not two copies free to drift" — the claim and the code
+    # disagreed, in the commit that made the claim. Importing the value is also
+    # what removed the last reason to `inherit toCasePattern` here at all.
     while IFS= read -r seg; do
       # shellcheck disable=SC2016
       case "$seg" in
-      ${lib.concatMapStringsSep "\n      " (
-        g:
-        "${lib.concatMapStringsSep " | " toCasePattern g.patterns}) deny ${lib.escapeShellArg g.reason} ;;"
-      ) (denies.bashGroups ++ denies.tuiGroups)}
+      ${guards.denyCaseArms}
       esac
     done <<SEGMENTS
     $(segments)
@@ -328,15 +347,10 @@ let
       # Derived from the deny patterns themselves rather than hand-listed: the
       # literal prefix of each pattern is what a command must contain to be worth
       # judging, and a second list here would be a second copy of the deny list.
-      # `jj * -i` reduces to "jj", which pulls every jj command out of the L3 set
-      # — conservative, and honest in a way a curated list would not be.
-      offTrigger = lib.unique (
-        lib.filter (s: s != "") (
-          map (p: lib.removeSuffix " " (lib.head (lib.splitString "*" p))) (
-            lib.concatMap (g: g.patterns) (denies.bashGroups ++ denies.tuiGroups)
-          )
-        )
-      );
+      # The derivation itself moved to agent-denies.nix once commandShapeGuard's
+      # prefilter needed it too — the same reason denyCaseArms lives there, and
+      # the same mistake avoided one layer up.
+      offTrigger = denies.denyPrefixes;
       routes = [
         {
           command = "nh os switch /etc/nixos";
@@ -359,6 +373,48 @@ let
         }
         {
           command = "codex exec 'hello'";
+          want = "allow";
+        }
+        # The wrapped forms. Claude asserts these against commandShapeGuard's
+        # backstop; for Codex the same rule lives HERE, because this loop reads
+        # `segments` and therefore already follows `bash -c`, `timeout` and
+        # `nix shell … -c`. Same shapes, asserted where the arm actually is.
+        {
+          command = "bash -c 'nix shell nixpkgs#neovim -c nvim'";
+          want = "deny";
+        }
+        {
+          command = "timeout 60 nix shell nixpkgs#docker -c docker ps";
+          want = "deny";
+        }
+        # `nix run <flake>#<attr>` needs no `-c`, so no unwrap reaches it: it is
+        # denied by the pattern agent-denies.nix keys on the package attr.
+        {
+          command = "nix run nixpkgs#neovim";
+          want = "deny";
+        }
+        # And the false positive that anchoring `unwrap`'s arms fixed: quoting a
+        # wrapped shape is not running it. This was denied for both agents,
+        # because both read the same `segments`.
+        {
+          command = "grep -n \"nix shell nixpkgs#neovim -c nvim --version\" claude/CLAUDE.md";
+          want = "allow";
+        }
+        # The wrapper leaks, which denyGuard closes for Codex through the same
+        # `segments` — it has no prefilter, so for this agent they were never a
+        # question of what the guard looks at, only of what `unwrap` knows.
+        # `, <cmd>` is new to it: comma is taught in CLAUDE.md/AGENTS.md now, so
+        # the deny list has to be able to read that spelling.
+        {
+          command = ", nvim";
+          want = "deny";
+        }
+        {
+          command = "timeout 60 nvim";
+          want = "deny";
+        }
+        {
+          command = ", typos --format brief .";
           want = "allow";
         }
       ];
@@ -449,6 +505,11 @@ let
       GIT_EDITOR = "false";
       EDITOR = "false";
       VISUAL = "false";
+      # comma's picker, same script Claude gets, same law 3 reasoning — and the
+      # same tier as the editor pins beside it: managed_config.toml is a
+      # defaults file, so for Codex this is a default worth respecting rather
+      # than a wall (law 4). AGENTS.md teaches `, <cmd>` either way.
+      COMMA_PICKER = "${guards.commaPicker}";
     };
   };
 in

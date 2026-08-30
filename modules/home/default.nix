@@ -14,6 +14,7 @@ let
     theme
     themeBright
     themeVivid
+    orangeDark
     backgroundHard
     ;
 
@@ -422,7 +423,14 @@ in
         # anything hand-picked here.
 
         # Gruvbox's own convention: the oranges live at 16 and 17, because ANSI
-        # has no orange. Anything written for gruvbox reaches for these.
+        # has no orange. Anything written for gruvbox reaches for these — as
+        # foreground, which is what makes them text slots and not decoration.
+        #
+        # 17 is `orangeDark`, not gruvbox's own base0F. Same reason the normal
+        # slots above take themeBright rather than the dark set: #d65d0e measures
+        # 4.24:1 on this background and is the last text colour here that did not
+        # clear AA. palette.nix carries the lift and its cost. Both indexes are in
+        # checks.alacritty-contrast now, which is why this one was found at all.
         indexed_colors = [
           {
             index = 16;
@@ -430,7 +438,7 @@ in
           }
           {
             index = 17;
-            color = theme.base0F;
+            color = orangeDark;
           }
         ];
       };

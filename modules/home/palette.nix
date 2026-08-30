@@ -39,6 +39,11 @@
     base0C = "#8ec07c";
     base0D = "#7daea3";
     base0E = "#d3869b";
+    # No ANSI slot, like its dark twin, and nothing reads it today — index 17
+    # resolves to orangeDark below. Kept so this attrset stays a complete
+    # base16 palette, and listed in checks.alacritty-contrast anyway (6.39:1),
+    # because a foreground value a consumer could start reading tomorrow is not
+    # one to leave unmeasured.
     base0F = "#f28534";
   };
 
@@ -57,6 +62,33 @@
     base0D = "#a0c0ad";
     base0E = "#dea3a7";
   };
+
+  # 256-colour index 17, gruvbox's darker orange, raised until it clears AA.
+  #
+  # ANSI has no orange slot, so gruvbox parks two at indexes 16 and 17, and both
+  # are FOREGROUND — programs written for gruvbox reach for them the way they
+  # reach for red or blue. Index 16 is theme.base09 and clears at 6.49:1. Index
+  # 17's supplied value does not: base0F #d65d0e measures 4.24:1 on
+  # backgroundHard, under the 4.5 every other text slot here is held to. It sat
+  # that way unnoticed because checks.alacritty-contrast did not list either
+  # index — the same "the dark set fails where it is read most" finding that put
+  # themeBright into the ANSI normal slots, reaching two slots the mapping
+  # happened not to cover.
+  #
+  # This is base0F with its HSV value raised 8% and hue and saturation held
+  # (#d65d0e x 1.08). Mixing toward base07, the way themeVivid is built, reaches
+  # the same ratio at 10% — but it desaturates on the way, and a pale orange
+  # stops reading as the darker of the pair, which is the only reason index 17
+  # exists beside 16. Holding saturation is what keeps it a burnt orange.
+  #
+  # 4.86:1, and the step down from index 16 narrows from 1.53:1 to 1.34:1. That
+  # narrowing is the price of AA on a #1d2021 ground and is written down rather
+  # than hidden: there is not much room between 4.5 and base09's 6.49, so a pair
+  # of oranges that both clear cannot be as far apart as gruvbox's own.
+  #
+  # theme.base0F above keeps the supplied #d65d0e so that attrset stays what it
+  # says it is. Nothing reads it now; this is what indexed_colors 17 resolves to.
+  orangeDark = "#e7640f";
 
   # Gruvbox's "hard" background, one step darker than base00. Used for the
   # window background *only* — ANSI color0 stays base00. Without this split the

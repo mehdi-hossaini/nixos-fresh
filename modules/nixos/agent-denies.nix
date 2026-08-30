@@ -68,7 +68,58 @@ rec {
     "${e.command} *"
   ]) (byForm "all");
 
-  tuiPatterns = barePatterns ++ allPatterns;
+  # `nix run <flake>#<attr>` is the same hang with no `-c` in it. It runs the
+  # package's default app directly, so the wrapped-command unwrap in
+  # agent-guards.nix has nothing to extract and the segment's own first word is
+  # `nix` — `nix run nixpkgs#neovim` passed every wall here while `nix shell
+  # nixpkgs#neovim -c nvim` was refused. There is no textual route from the attr
+  # to the binary either (`neovim` starts `nvim`), which makes this the one rule
+  # that must be keyed on the PACKAGE rather than on the command — and tools.json
+  # is where that mapping already lives, so the key comes from the same entry as
+  # everything else here rather than from a second list.
+  #
+  # Split by form for the same reason the patterns above are: for an "all" entry
+  # every spelling hangs, and for a "bare" one only the argument-less form does,
+  # since `nix run nixpkgs#codex -- exec …` still reaches the scriptable half.
+  # A null package is dropped rather than interpolated: those are the base-system
+  # entries, which have no attr to `nix run` in the first place.
+  #
+  # Scoped to the inventory's own spellings, like every other pattern here:
+  # `nix run nixpkgs#vim` starts a vim this machine does not declare, and stays
+  # out of scope until something declares it.
+  #
+  # Only entries whose command is the tool's PRIMARY binary — the one `nix run
+  # <flake>#<pkg>` actually starts. Two ways that is not the denied command, and
+  # this repo now has both:
+  #
+  #   a subcommand   `mlr repl` and `ast-grep lsp` hang, but `nix run
+  #                  nixpkgs#miller` is `mlr` printing its help.
+  #   a second binary  scc ships `badges` (an HTTP server) and universal-ctags
+  #                  ships `optscript` (a REPL), while `nix run nixpkgs#scc` is
+  #                  the line counter and `#universal-ctags` is ctags.
+  #
+  # A package-level pattern for either denies the whole tool over the flaw of
+  # one of its parts. The first version of this test asked only whether the
+  # command was one word, which handled the subcommands and would have denied
+  # scc and universal-ctags outright — and, because ast-grep declares one entry
+  # of each form, it also emitted the same pattern twice, which shellcheck
+  # rejects (SC2221) once the arms become a `case`.
+  isPrimary = e: e.command == (e.primary or e.command);
+  packagesOf =
+    f:
+    lib.unique (
+      builtins.filter (p: p != null) (map (e: e.package or null) (builtins.filter isPrimary (byForm f)))
+    );
+  nixRunAll = packagesOf "all";
+  nixRunBare = builtins.filter (p: !(builtins.elem p nixRunAll)) (packagesOf "bare");
+  nixRunPatterns =
+    lib.concatMap (p: [
+      "nix run *#${p}"
+      "nix run *#${p} *"
+    ]) nixRunAll
+    ++ map (p: "nix run *#${p}") nixRunBare;
+
+  tuiPatterns = barePatterns ++ allPatterns ++ nixRunPatterns;
   tuiDenies = map (p: "Bash(${p})") tuiPatterns;
 
   # The same patterns as groups, for an agent that has no declarative deny and
@@ -85,6 +136,10 @@ rec {
     ++ lib.optional (barePatterns != [ ]) {
       reason = "the bare command opens an interactive TUI and a session with no terminal cannot drive it — it hangs rather than fails (law 3). Only the bare form is denied: this tool's subcommands are non-interactive and stay available, and tools.json's purpose note names them.";
       patterns = barePatterns;
+    }
+    ++ lib.optional (nixRunPatterns != [ ]) {
+      reason = "`nix run <flake>#<attr>` runs that package's default app, and tools.json marks this one interactive: a session with no terminal cannot drive it, so it hangs rather than fails (law 3). It needs no `-c`, which is why no wrapper unwrap catches it and why this rule is keyed on the package attr rather than on the command it starts. Law 1's one-off idiom is untouched in its other spelling — `nix shell nixpkgs#<pkg> -c <command>` — for anything non-interactive.";
+      patterns = nixRunPatterns;
     };
 
   bashGroups = [
@@ -141,6 +196,29 @@ rec {
       ];
     }
     {
+      # ast-grep's interactive edit session, which agent_unsafe cannot express:
+      # that field keys on a COMMAND, and this hangs on a flag. Same shape as the
+      # jj group above and for the same reason — both position variants of both
+      # spellings, because `ast-grep -i` (run is the default subcommand) and
+      # `ast-grep run -i` are both real, and a trailing ` *` matches neither the
+      # flag sitting last nor the flag sitting first.
+      #
+      # `ast-grep lsp` and bare `ast-grep new` hang too and are NOT here: those
+      # are commands, so tools.json says so through agent_unsafe and both agents
+      # get them from the inventory.
+      reason = "`ast-grep -i/--interactive` opens an interactive edit session, which a session with no terminal cannot drive — it hangs rather than fails (law 3). To see the matches first, run it with `--json` and read them; to apply every match without a session, `-U`/`--update-all`. Rewrites only happen inside one of those two.";
+      patterns = [
+        "ast-grep -i"
+        "ast-grep -i *"
+        "ast-grep --interactive"
+        "ast-grep --interactive *"
+        "ast-grep * -i"
+        "ast-grep * -i *"
+        "ast-grep * --interactive"
+        "ast-grep * --interactive *"
+      ];
+    }
+    {
       reason = "this reaches a sudo prompt no agent session can answer (law 3). Take the work to a clean `nh os build` and hand the switch over — denying it here turns a confusing `sudo: a terminal is required` after a full build into an immediate hand-off.";
       patterns = [
         "nh os switch"
@@ -156,13 +234,74 @@ rec {
       # docker is "not an invitation"; this is that sentence with teeth. Both
       # forms, because even the read-only subcommands have no agent use here —
       # nothing agent-facing runs in a container on this machine.
+      #
+      # docker-compose is a separate binary from docker itself — "docker-compose
+      # up" contains no space after "docker", so neither pattern above ever
+      # matched it — and it drives the exact same root-equivalent daemon
+      # winboat.nix wires a password-less socket to. Present in nixpkgs
+      # (nix-locate confirms), so `nix shell nixpkgs#docker-compose -c
+      # docker-compose up` reaches it with no wrapper needed and without
+      # winboat's own PATH suffix.
+      #
+      # podman moved to its own group below. It used to sit in this one under
+      # this reason, which was false for it: rootless podman is not in the docker
+      # group and is not root-equivalent. A wall whose stated reason does not
+      # hold is a wall that gets argued with.
       reason = "the docker group is root-equivalent, and unlike sudo it prompts for nothing — a container with a bind mount edits the host as root, which walks around the password hand-off every other wall here assumes (law 3). Docker exists on this machine for winboat alone (tools.json), not as an agent tool. If a task genuinely needs a container, say so and the user can run it.";
       patterns = [
         "docker"
         "docker *"
+        "docker-compose"
+        "docker-compose *"
+      ];
+    }
+    {
+      # Split out of the docker group 2026-08-30, and widened at the same time.
+      # The old arrangement denied `podman-compose` while leaving bare `podman`
+      # open — the wrapper refused and the thing it drives allowed — and it did
+      # that under a reason about the docker daemon that only holds when podman
+      # is pointed at that socket through DOCKER_HOST. Checked: `command -v
+      # podman podman-compose` finds neither (tools.json lists podman under
+      # not_installed), and DOCKER_HOST appears nowhere in this repo.
+      #
+      # So the honest version is a separate reason and no asymmetry. Both
+      # binaries, both forms.
+      reason = "podman is not installed here (tools.json, not_installed), so reaching it means fetching it — and both ends of that are already walled. Pointed at the docker socket with DOCKER_HOST it IS the root-equivalent daemon denied above; rootless it is a container runtime nothing on this machine runs, and law 1 is clear that a container is not the route around a package nixpkgs already has. Rootless podman is genuinely not root-equivalent, which is why this is its own rule rather than the docker one. If a task truly needs a container, say so and the user can run it.";
+      patterns = [
+        "podman"
+        "podman *"
+        "podman-compose"
+        "podman-compose *"
       ];
     }
   ];
+
+  # The literal prefix of every deny pattern: what a command must CONTAIN before
+  # any of these rules could possibly apply to it. Derived from the patterns
+  # rather than hand-listed, so a new deny cannot be added without the things
+  # that gate on it learning about it.
+  #
+  # Two consumers, which is why it lives here and not in either of them.
+  # codex.nix's denyGuard declares it as the guard's offTrigger, and
+  # agent-guards.nix's commandShapeGuard folds it into the literal prefilter that
+  # decides whether that guard parses the payload at all. The second one is what
+  # closed the wrapper leaks: `timeout 60 nvim`, `FOO=1 nvim` and `, nvim` all
+  # unwrap to a denied verb, but the guard used to exit before looking, because
+  # none of them contains `nix shell`, `bash -c` or any other literal on the old
+  # hand-written list. Judging by the deny list itself is the only version of
+  # that list that cannot fall behind it.
+  #
+  # Deliberately conservative: `jj * -i` reduces to "jj", so every jj command is
+  # worth judging, and `sg` matches any command with "sg" anywhere in it. Both
+  # over-approximate, which costs a segments pass on commands that turn out fine
+  # and never costs a decision — every arm downstream is segment-anchored.
+  denyPrefixes = lib.unique (
+    lib.filter (s: s != "") (
+      map (p: lib.removeSuffix " " (lib.head (lib.splitString "*" p))) (
+        lib.concatMap (g: g.patterns) (bashGroups ++ tuiGroups)
+      )
+    )
+  );
 
   # Claude's form. Order is load-bearing only in that it must not change without
   # a reason: the generated managed-settings.json is compared byte-for-byte

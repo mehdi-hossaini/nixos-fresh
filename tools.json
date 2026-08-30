@@ -56,6 +56,42 @@
       "purpose": "JSON query and transformation."
     },
     {
+      "name": "ast-grep",
+      "package": "ast-grep",
+      "category": "search",
+      "purpose": "Structural search and rewrite over a syntax tree, for the pattern a regex cannot express — a call shape, a nested attribute, a node kind rather than a run of characters. `ast-grep run -p '<pattern>' -l <lang>` searches, `-U` rewrites every match, `ast-grep scan` runs a rule file. Reach for it after rg rather than instead of it: rg answers most questions here and is faster at them.",
+      "notes": "Absent on purpose until 2026-08-30 — dropped on 2026-08-24 after 0 invocations across 10,354 recorded commands, on a tree of nix, markdown and a little bash that rg covers — and installed now because it was asked for by name. The not_installed entry that recorded the removal is gone rather than left to contradict this one. nixpkgs installs only `bin/ast-grep`; the `sg` shortcut upstream also ships is NOT in this derivation, so the `sg` deny in agent-denies.nix still refers to util-linux's setgid wrapper and to nothing else. Three interactive surfaces are walled: `-i/--interactive` opens an edit session (denied through a pattern group, since agent_unsafe keys on a command and not a flag), `ast-grep lsp` is a language server that blocks on stdin forever, and bare `ast-grep new` scaffolds by asking questions — it dies with \"The input device is not a TTY\" here, and would hang in a shell that had one. `ast-grep new rule …` and every other subcommand stay available.",
+      "agent_unsafe": [
+        {
+          "command": "ast-grep lsp",
+          "forms": "all"
+        },
+        {
+          "command": "ast-grep new",
+          "forms": "bare"
+        }
+      ]
+    },
+    {
+      "name": "universal-ctags",
+      "package": "universal-ctags",
+      "commands": [
+        "ctags",
+        "readtags",
+        "optscript",
+        "universal-ctags"
+      ],
+      "category": "search",
+      "purpose": "A symbol index for the tree, which is what \"where is this defined\" falls back to when no language server is running — and none is, outside a devenv shell. `ctags -R .` writes a tags file, `readtags -n <name>` queries it without opening an editor, and both understand far more languages than anything else here does. Complements rg rather than replacing it: rg finds every mention, this finds the definition.",
+      "notes": "Four binaries, two of them worth knowing about. `universal-ctags` is the same program as `ctags` under its unambiguous name — this build provides the `ctags` name outright, so there is no exuberant-ctags to be confused with. `optscript` is its PostScript-like interpreter for writing tag actions, and bare it opens a REPL: it printed `OPT> ` and waited (measured 2026-08-30; it exits here only because an agent shell has no tty, and would hang in one). agent_unsafe with forms \"bare\", so `optscript <file>` still runs a script.",
+      "agent_unsafe": [
+        {
+          "command": "optscript",
+          "forms": "bare"
+        }
+      ]
+    },
+    {
       "name": "git",
       "package": "git",
       "category": "vcs",
@@ -95,6 +131,16 @@
       "category": "vcs",
       "purpose": "GitHub CLI — PRs, issues, `gh api`.",
       "notes": "Auth is per-user state; check `gh auth status` before assuming it is logged in."
+    },
+    {
+      "name": "difftastic",
+      "package": "difftastic",
+      "commands": [
+        "difft"
+      ],
+      "category": "vcs",
+      "purpose": "A diff that parses both sides and compares syntax trees, so a reindent, a rewrapped line or a moved brace stops reading as a change and a real edit stands out inside one. `difft old new` on two files; `jj diff --tool difft` for a revision, `git diff --ext-diff` with GIT_EXTERNAL_DIFF for git. Reach for it when a line diff is mostly noise; the line diff is still the right default for reviewing what actually changed textually.",
+      "notes": "Binary is `difft`, not `difftastic`. Not wired in as either VCS's default formatter on purpose: `jj diff` output is expected to look like a line diff, and a global change would make every log and every review read differently for one command's benefit. `--tool difft` is not the denied kind of `--tool` — the jj deny is about the INTERACTIVE ones (the builtin diff editor), and difft only prints."
     },
     {
       "name": "nix",
@@ -146,7 +192,14 @@
         "comma"
       ],
       "category": "nix",
-      "purpose": "Run a program without installing it: `, <cmd>` resolves it through the same nix-index database nix-locate reads, fetches the package and runs it. The one-off route of law 1 collapsed into one step; leaves nothing behind."
+      "purpose": "Run a program without installing it: `, <cmd>` resolves it through the same nix-index database nix-locate reads, fetches the package and runs it. The one-off route of law 1 collapsed into one step; leaves nothing behind. When more than one package provides the command it has to pick, and picking needs a terminal — agent sessions set COMMA_PICKER to a script that prints the candidates and the explicit `nix shell nixpkgs#<pkg> -c` form to stderr and exits, so an ambiguous name fails with an answer instead of hanging (law 3). `, -p <cmd>` lists those candidates without running anything, and `, -i` installs into a profile, so it is denied as law 1."
+    },
+    {
+      "name": "nix-diff",
+      "package": "nix-diff",
+      "category": "nix",
+      "purpose": "Why two closures differ, when `nh os build`'s +N/-N line says only how much. Takes two store paths — usually the `<<<` and `>>>` nh prints — and walks the derivation graph down to the first real difference: a changed input, an argument, an env var. `nix-diff --environment` includes the env vars, which is usually where the answer is when the inputs look identical.",
+      "notes": "One exception to law 6's `<tool> --version`: this binary has no such flag and answers `Invalid option '--version'`. `--help` lists what it does take, and the version is in its store path — `readlink -f $(command -v nix-diff)`, or `nix eval --raw /etc/nixos#nixosConfigurations.nixos-machine.pkgs.nix-diff.version`."
     },
     {
       "name": "devenv",
@@ -212,6 +265,23 @@
       "notes": "`--style auto` already drops the progress bar without a TTY, but NO_COLOR is ignored — pass `--style basic` in agent shells."
     },
     {
+      "name": "scc",
+      "package": "scc",
+      "commands": [
+        "scc",
+        "badges"
+      ],
+      "category": "quality",
+      "purpose": "How much code is here, by language, in about a second: lines split into code, comments and blanks, with complexity estimates. `scc .` for the table, `scc --format json .` to query it, `--no-cocomo` to drop the cost estimate nobody asked for. The size question answered without `wc -l` counting comments as work.",
+      "notes": "The package ships a SECOND binary, `badges`, and its name says nothing about what it does: it starts an HTTP badge service listening on :8080 and never returns — measured 2026-08-30, `timeout 8 badges </dev/null` came back 124, still running. That is a hang and an open port from a word an agent could plausibly type, so it is agent_unsafe with forms \"all\". Denying it costs nothing here: nothing on this machine wants a badge server.",
+      "agent_unsafe": [
+        {
+          "command": "badges",
+          "forms": "all"
+        }
+      ]
+    },
+    {
       "name": "deadnix",
       "package": "deadnix",
       "category": "nix",
@@ -252,6 +322,25 @@
       "category": "search",
       "purpose": "jq's query language over YAML (`yq`), TOML (`tomlq`) and XML (`xq`). Use instead of sed for structured config — a workflow file, a devenv.yaml.",
       "notes": "This is the python wrapper (kislyuk), deliberately not `yq-go`: it takes jq syntax, so there is no second query language on this machine. A `yq` example found online may be written for yq-go and will not parse. This is also why yq is declared despite being barely invoked — four packages ship /bin/yq (yq-go, yq, python3xxPackages.yq) and yq-go sorts first, so `, yq` would hand you the incompatible one. The declaration is what pins which yq."
+    },
+    {
+      "name": "jc",
+      "package": "jc",
+      "category": "search",
+      "purpose": "Turns a CLI's own output into JSON, so jq can address it by field instead of awk by column: `dig +short example.com | jc --dig`, `ps aux | jc --ps`, `jc -p ls -l`. Parsers are named per command (`jc -a` lists them, `--magic` syntax runs the command for you). The point is the same one yq makes for YAML and TOML — one query language on this machine, not a second dialect per format."
+    },
+    {
+      "name": "mlr",
+      "package": "miller",
+      "category": "search",
+      "purpose": "Records rather than lines, for the formats jq does not read: CSV, TSV, JSON-lines, NIDX and PPRINT through one verb chain — `mlr --icsv --ojson cut -f a,b then sort -nr c then head -n 20`. Where jq is the tool for a JSON document, this is the tool for a table, and it converts between the two in the same pass. Binary is `mlr`, package attribute is `miller`.",
+      "notes": "`mlr repl` is an interactive REPL and hangs a session with no terminal, so it is agent_unsafe with forms \"all\" — every other verb is a filter over stdin and stays available. `mlr -I` edits files in place, which is the same shape as `sed -i` and is not walled; the `| sponge` rule in CLAUDE.md is about a redirect truncating its own input, and `-I` does not do that.",
+      "agent_unsafe": [
+        {
+          "command": "mlr repl",
+          "forms": "all"
+        }
+      ]
     },
     {
       "name": "file",
@@ -408,13 +497,23 @@
         "curl",
         "ssh",
         "rsync",
-        "strace",
         "sudo",
         "systemctl"
       ],
       "category": "shell",
       "purpose": "Base-system commands, always present. `curl` lives here — there is no wget.",
-      "notes": "Not a nixpkgs attribute of its own, hence package: null. The bundle name is not itself a command; the `commands` array is what exists on PATH. rsync and strace ride in via NixOS's environment.defaultPackages rather than any list in this repo — present by default, listed here so the inventory stops under-promising what PATH actually holds."
+      "notes": "Not a nixpkgs attribute of its own, hence package: null. The bundle name is not itself a command; the `commands` array is what exists on PATH. rsync rides in via NixOS's environment.defaultPackages rather than any list in this repo — present by default, listed here so the inventory stops under-promising what PATH actually holds. strace arrives the same way and used to be listed here too; it has its own entry now, because a tool with a capability limit worth knowing about needs somewhere to say so."
+    },
+    {
+      "name": "strace",
+      "package": null,
+      "commands": [
+        "strace",
+        "strace-log-merge"
+      ],
+      "category": "quality",
+      "purpose": "What a process actually asked the kernel for, when a tool's own output has stopped explaining it: `strace -f -e trace=file <cmd>` for a path that is not where you thought, `-e trace=network` for a connection that is not happening, `-c` for a syscall histogram instead of a transcript. The answer to \"it says it cannot find the file\" when the file is right there.",
+      "notes": "Nothing declares it: NixOS's environment.defaultPackages puts it on PATH, which is why package is null and why it is not in packages.nix. Same store path nixpkgs would give — 7.2 as of 2026-08-30. The limit worth knowing before reaching for it: `kernel.yama.ptrace_scope = 1` on this machine, so a running process can only be attached to if it is a descendant of the shell doing the attaching. `strace -p <pid>` on anything else fails with EPERM and needs root, so tracing usually means launching the command UNDER strace rather than attaching to one already running."
     },
     {
       "name": "geogebra",
@@ -473,12 +572,6 @@
         "unzip"
       ],
       "workaround": "`nix shell nixpkgs#unzip -c unzip <file>`. `tar` handles .tar.* archives; a plain .zip needs unzip — there is no bsdtar on PATH, despite what this entry used to claim."
-    },
-    {
-      "names": [
-        "ast-grep"
-      ],
-      "workaround": "`, ast-grep …` runs it for one command, or `nix shell nixpkgs#ast-grep -c`. Dropped 2026-08-24 after 0 invocations in 10,354 recorded commands: this tree is nix, markdown and a little bash, which rg covers. Note `sg` is util-linux's setgid wrapper and always was — it is not ast-grep."
     },
     {
       "names": [

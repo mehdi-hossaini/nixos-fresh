@@ -306,7 +306,11 @@ for f in "$MANAGED" "$SETTINGS"; do
   [ -f "$f" ] || continue
   all=yes
   for v in JJ_EDITOR GIT_EDITOR EDITOR VISUAL; do
-    jq -e --arg v "$v" '.env[$v] // empty' "$f" >/dev/null 2>&1 || all=no
+    # == "false", not `// empty`: the latter only asked whether the key was
+    # present and non-null, so EDITOR="vim" passed the check as readily as
+    # EDITOR="false" did — the one drift (an interactive editor pinned instead
+    # of the no-op) this trap exists to catch.
+    jq -e --arg v "$v" '.env[$v] == "false"' "$f" >/dev/null 2>&1 || all=no
   done
   [ "$all" = yes ] && {
     guard_src=$f
@@ -321,6 +325,37 @@ else
   ok "no env guard, but ui.editor ('$jj_ui_editor') does not block"
 fi
 note "jj's DIFF editor (bare jj split, jj diffedit, jj resolve without --list or --tool mergiraf) is a builtin TUI — still agent-unsafe regardless"
+
+# The same guard on the Codex side, which the loop above cannot see: Claude's
+# lives in managed-settings.json, and requirements.toml has no vocabulary for
+# environment at all, so codex.nix writes these into managed_config.toml
+# instead. CLAUDE.md's law 4 names that file by path — and until this arm existed
+# nothing checked it, so the law asserted a location that could move without a
+# word. That is the failure this file exists to prevent, aimed at the file that
+# generates this file.
+#
+# A `bad` and not a `note` even though law 4 calls it a default rather than a
+# wall: the path is a store symlink, so what is being checked is that codex.nix
+# still writes the keys, not that a user has left them alone.
+CODEX_MANAGED=${CODEX_MANAGED:-/etc/codex/managed_config.toml}
+if [ -f "$CODEX_MANAGED" ]; then
+  codex_all=yes
+  for v in JJ_EDITOR GIT_EDITOR EDITOR VISUAL; do
+    # shellcheck disable=SC2016  # $v is jq's variable, bound by --arg, exactly as in the jq call above
+    # The disable is needed here and not there because shellcheck knows `jq`
+    # takes a program as its argument and stays quiet about the single quotes;
+    # `tomlq` is yq's wrapper around the same language and is not on that list.
+    tomlq -e --arg v "$v" '.shell_environment_policy.set[$v] == "false"' \
+      "$CODEX_MANAGED" >/dev/null 2>&1 || codex_all=no
+  done
+  if [ "$codex_all" = yes ]; then
+    ok "the same four are pinned for Codex, in $CODEX_MANAGED (law 4's other half)"
+  else
+    bad "$CODEX_MANAGED does not pin JJ_EDITOR/GIT_EDITOR/EDITOR/VISUAL to false — CLAUDE.md's law 4 says it does"
+  fi
+else
+  bad "$CODEX_MANAGED is missing, but CLAUDE.md's law 4 says the Codex editor guard lands there"
+fi
 
 # The other two instances of law 3. Both were found by hitting them, and both are
 # assertable, unlike the law itself.

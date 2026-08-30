@@ -23,6 +23,8 @@
   pkgs,
   jq,
   a,
+  lib,
+  denies,
 }:
 rec {
   # `pkgs.writeShellScript` runs `stdenv.shellDryRun` and nothing else — `bash -n`,
@@ -64,9 +66,256 @@ rec {
       '';
       checkPhase = ''
         ${pkgs.stdenv.shellDryRun} "$target"
-        ${pkgs.shellcheck}/bin/shellcheck "$target"
+        # LC_ALL, because shellcheck prints the offending LINE and every deny
+        # reason in this file is prose with em dashes in it. Under the sandbox's
+        # default C locale that print fails — "commitBuffer: invalid argument
+        # (cannot encode character '\8212')" — and the build dies with exit 2 and
+        # a mangled half-message instead of the finding. Observed 2026-08-30 on a
+        # real SC2221: the lint worked, and reporting it is what broke.
+        LC_ALL=C.UTF-8 ${pkgs.shellcheck}/bin/shellcheck "$target"
       '';
     };
+
+  # comma's picker, for a session with no terminal.
+  #
+  # Not a guard — agent ENVIRONMENT, and it is here for the same reason the
+  # guards are: one definition, both agents, and shellchecked at build time by
+  # the writer above. `, <cmd>` resolves a command through the nix-index
+  # database; when more than one package provides it, comma pipes the candidate
+  # names to $COMMA_PICKER on stdin and runs whichever one it reads back on
+  # stdout (probed against comma 2.4.1 with a stub picker, 2026-08-30). The
+  # default picker is fzy, which needs a tty: in an agent shell it dies with
+  # "Failed to open tty" and comma exits 1 saying nothing useful, and in a shell
+  # that HAS a pty it would hang — law 3, in a tool this repo now teaches.
+  #
+  # So: fail, but fail with the answer. Printing the candidates and the explicit
+  # form to stderr turns a dead end into the next command to type, which is the
+  # same standard the deny messages are held to. Exit 1 rather than picking the
+  # first line, because picking silently would run a package nobody named.
+  commaPicker = writeGuard "${a.prefix}-comma-picker" ''
+    set -u
+    candidates=$(cat)
+    {
+      printf 'comma: more than one package provides that command, and choosing between them needs a terminal this session does not have (law 3).\n'
+      printf 'Candidates:\n'
+      printf '%s\n' "$candidates" | sed 's/^/  - /'
+      printf 'Run the one you mean explicitly:  nix shell nixpkgs#<pkg> -c <cmd>\n'
+      printf 'That same list, without running anything:  , -p <cmd>\n'
+    } >&2
+    exit 1
+  '';
+
+  # Claude's permissions.deny, as a shell `case`: a `Bash(<glob>)` pattern and a
+  # case pattern mean the same thing, so the translation is mechanical — quote
+  # the literal runs and leave the `*`s outside, since a case pattern with a
+  # bare space in it is a syntax error rather than a wide match. codex.nix's
+  # denyGuard uses this to translate the whole deny list into a hook, since
+  # Codex has no declarative equivalent; commandShapeGuard below uses it too,
+  # for the slice of that same list a wrapped command would otherwise skip past
+  # both agents' front door.
+  toCasePattern =
+    p:
+    lib.concatStringsSep "*" (
+      map (s: if s == "" then "" else lib.escapeShellArg s) (lib.splitString "*" p)
+    );
+
+  # The bashGroups/tuiGroups deny groups, as `case` arms, shared by codex.nix's
+  # denyGuard and commandShapeGuard's backstop below — one translation, not two
+  # copies free to drift the way this file's own comments elsewhere warn about.
+  denyCaseArms = lib.concatMapStringsSep "\n    " (
+    g:
+    "${lib.concatMapStringsSep " | " toCasePattern g.patterns}) deny ${lib.escapeShellArg g.reason} ;;"
+  ) (denies.bashGroups ++ denies.tuiGroups);
+
+  # One command in, one command per line out. Every guard that judges a command
+  # judges it segment by segment, so `jj log && jj split` is caught on its second
+  # half instead of sliding past — Claude Code splits compound commands itself
+  # before applying permissions.deny, and this is the same job done where the
+  # payload lands.
+  #
+  # It lives here, once, because it did not: `requires` below and codex.nix's
+  # denyGuard each carried their own copy, and the copies were the parser — the
+  # part that decides whether a deny fires at all. The bug that cost the most is
+  # worth keeping written down, since it is the one a rewrite would reintroduce:
+  # `tr` leaves a TRAILING space on every segment but the last, so trimming only
+  # the leading side made `jj split && jj log` produce "jj split " and an exact
+  # pattern never matched it. The deny held for `jj log && jj split` and not for
+  # the reverse, which is the ordering that happened to get tested. Trim both
+  # ends. Empty segments are dropped so a caller never has to check for them.
+  #
+  # One newline in SET2, not four: tr pads a short SET2 by repeating its last
+  # character, so the two forms are identical (verified, not assumed). The
+  # spelled-out version reads as clearer and is what shellcheck's SC2020 fires
+  # on — it cannot tell deliberate padding from a set written by mistake, and
+  # the guards are shellchecked at build time now (see writeGuard above).
+  #
+  # A segment can also be a WRAPPER around the command it is actually judging:
+  # `bash -c 'git commit -m x'`, `env FOO=bar cmd`, and `nix shell nixpkgs#neovim
+  # -c nvim` — law 1's own one-off-tool idiom — all run an inner command that
+  # never matches a pattern anchored on the wrapped verb. Found live: `bash -c
+  # 'git commit -m probe'` in a colocated /etc/nixos passed colocatedCommitGuard
+  # silently while the bare form was denied. `unwrap` extracts the wrapped text
+  # and `segments` emits it as an ADDITIONAL line, so every guard and denyGuard
+  # built on this function gain the same depth once rather than each growing
+  # its own wrapper list. Deliberately narrow — the idioms this repo actually
+  # teaches or ships, not an attempt at a general shell parser: quoting a word
+  # apart still defeats a downstream prefix match the same way it already
+  # defeats every other segment-anchored pattern here (`git "commit"` beats
+  # `"git commit"*` too), and that residual is accepted the same way everywhere,
+  # not specific to this.
+  #
+  # A standalone value, not inlined into guardPreamble, because
+  # commandShapeGuard needs it too and deliberately does not use guardPreamble
+  # (see its own comment) — a second copy here would be exactly the duplicated
+  # parser this comment already argues against.
+  segmentsFn = ''
+    raw_segments() {
+      printf '%s' "$cmd" | tr ';|&\n' '\n' |
+        sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
+    }
+    # Sets `unwrapped` instead of printing it, because `inner=$(unwrap "$seg")`
+    # is a FORK PER SEGMENT and this runs over every segment of every guarded
+    # command. Same reason the assignment strip below is gated on a `case`
+    # instead of running unconditionally, and the same reason commandShapeGuard's
+    # own loops now test before they `sed`.
+    #
+    # Measured, not assumed — against the largest payload in the recorded corpus
+    # (41K, 667 segments) on a 10s hook timeout: 4.2s before this change-set,
+    # 6.8s with the fixpoint added naively, 0.2s once the per-segment forks came
+    # out. The naive middle is the number worth keeping: recursing over wrappers
+    # made the guard SLOWER than the hole it closed, and a guard that times out
+    # is a guard that is not there.
+    unwrap() {
+      s=$1
+      inner=""
+      unwrapped=""
+      # A leading `VAR=val` run is the environment a verb runs in, not the verb.
+      # Stripped before the arms below, which is what lets them be ANCHORED —
+      # and anchoring is the whole difference between running a shape and naming
+      # one. Unanchored, `*"nix shell "*" -c "*` matched a read-only `grep -n
+      # "nix shell nixpkgs#neovim -c nvim --version" claude/CLAUDE.md`, pulled
+      # the quoted text out of the middle of it and denied the grep: this repo
+      # refusing to be searched for the rules it defines. Same false-positive
+      # class the law-1 arm below already records fixing, and it reached Codex
+      # too, whose denyGuard shares this function through guardPreamble.
+      case "''${s%%[[:space:]]*}" in
+      [A-Za-z_]*=*)
+        s=$(printf '%s' "$s" | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//')
+        ;;
+      esac
+      case "$s" in
+      "bash -c "* | "sh -c "*)
+        inner=$(printf '%s' "$s" | sed -E 's/^(bash|sh)[[:space:]]+-c[[:space:]]+//')
+        ;;
+      "env "*)
+        inner=$(printf '%s' "$s" |
+          sed -E 's/^env[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+        ;;
+      # `timeout <dur>` is this repo's own idiom for a command that might hang,
+      # and it is what keeps the anchoring above from costing coverage: with it
+      # `timeout 60 nix shell nixpkgs#docker -c docker ps` reaches the docker
+      # deny through two unwraps instead of through one greedy match. A bare
+      # `timeout 60 nvim` is caught too, but by the prefilter carrying the deny
+      # list's own prefixes rather than by anything here — this arm only makes
+      # the segment legible once the guard has decided to look at it.
+      "timeout "*)
+        inner=$(printf '%s' "$s" |
+          sed -E 's/^timeout[[:space:]]+(-[^[:space:]]+[[:space:]]+)*[0-9]+[smhd]?[[:space:]]+//')
+        ;;
+      # The other three wrappers this repo teaches by name. `, <cmd>` resolves a
+      # command through nix-index and runs it — law 1's one-off route in one
+      # step — and `devenv shell -- <cmd>` / `direnv exec <dir> <cmd>` run one
+      # inside a project's environment. Each is a spelling of "run this thing"
+      # that the deny list, matching on the verb, cannot see through. Promoting
+      # comma in CLAUDE.md without this arm would have handed the TUI wall a
+      # spelling it does not read: `, nvim` is `nvim`.
+      #
+      # Flags before the command defeat the comma arm (`, --cache-level 0 nvim`
+      # leaves the flags in `inner`). Accepted and not chased: the flag worth
+      # walling is `-i`, which installs, and commandShapeGuard's law-1 arm denies
+      # that by name rather than by unwrapping it.
+      ", "* | "comma "*)
+        inner=''${s#* }
+        ;;
+      "devenv shell --"*)
+        inner=''${s#*-- }
+        ;;
+      "direnv exec "*)
+        inner=$(printf '%s' "$s" |
+          sed -E 's/^direnv[[:space:]]+exec[[:space:]]+[^[:space:]]+[[:space:]]+//')
+        ;;
+      # The FIRST ` -c `, not the last. The greedy `s/^.*[[:space:]]-c…` this
+      # replaces extracted after the last one, so `nix shell nixpkgs#git -c git
+      # commit -m "use -c to pick a config"` unwrapped to `to pick a config"`
+      # and every guard built on `segments` — the commit guard included — saw
+      # nothing at all. A ` -c ` inside the wrapped command's own arguments
+      # belongs to that command, not to the wrapper that ran it.
+      "nix shell "*" -c "* | "nix run "*" -c "*)
+        inner=''${s#* -c }
+        ;;
+      "nix shell "*" --command "* | "nix run "*" --command "*)
+        inner=''${s#* --command }
+        ;;
+      esac
+      # No arm matched, but the assignment strip changed the segment: the verb
+      # it left behind is still worth judging, so `S=/tmp/x nix shell … -c
+      # docker ps` unwraps the whole way down. Compared against the ORIGINAL
+      # argument rather than the stripped one, so a segment nothing touched
+      # unwraps to nothing rather than to itself — which is also what gives the
+      # recursion in `unwrapped_of` its fixed point.
+      #
+      # `FOO=1 nvim` is judged too, but only because "nvim" is itself in
+      # commandShapeGuard's prefilter now — an assignment run has no fixed
+      # literal to trigger on, so this arm reaches it through the denied verb
+      # rather than through the wrapper.
+      [ -n "$inner" ] || inner=$s
+      [ "$inner" = "$1" ] && inner=""
+      [ -n "$inner" ] || return 0
+      # One layer of matching outer quotes, since the wrapper's own argument
+      # syntax is what put them there — not full shell unquoting.
+      case "$inner" in
+      "'"*"'")
+        inner=''${inner#\'}
+        inner=''${inner%\'}
+        ;;
+      \"*\")
+        inner=''${inner#\"}
+        inner=''${inner%\"}
+        ;;
+      esac
+      unwrapped=$inner
+    }
+    # What a wrapper was hiding, split the same way a raw segment is — and then
+    # the same question asked of THAT, because wrappers nest. One level was the
+    # first spelling and it left the hole this backstop exists to close one
+    # `bash -c` wide: `bash -c 'nix shell nixpkgs#neovim -c nvim'` unwrapped to
+    # `nix shell nixpkgs#neovim -c nvim`, which matches no deny pattern, while
+    # the bare form was refused. `env FOO=1 nix shell … -c nvim` the same.
+    #
+    # Terminates on its own: every arm of `unwrap` returns a strict SUFFIX of
+    # what it was given, and a segment nothing unwraps returns nothing rather
+    # than itself. The depth cap is therefore a belt, not the brace — it bounds
+    # a pathological payload's fork count rather than the recursion.
+    unwrapped_of() {
+      local seg=$1 depth=''${2:-0} out
+      [ "$depth" -lt 4 ] || return 0
+      unwrap "$seg"
+      out=$unwrapped
+      [ -n "$out" ] || return 0
+      printf '%s\n' "$out" | tr ';|&\n' '\n' |
+        sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d' |
+        while IFS= read -r nested; do
+          printf '%s\n' "$nested"
+          unwrapped_of "$nested" "$((depth + 1))"
+        done
+    }
+    segments() {
+      raw_segments | while IFS= read -r seg || [ -n "$seg" ]; do
+        printf '%s\n' "$seg"
+        unwrapped_of "$seg"
+      done
+    }
+  '';
 
   guardPreamble = ''
     set -u
@@ -79,31 +328,7 @@ rec {
     cmd=$(printf '%s' "$input" | ${jq} -r '.tool_input.command // empty | if type == "array" then join(" ") else . end') ||
       escalate "guard could not read the command out of the hook payload."
 
-    # One command in, one command per line out. Every guard that judges a command
-    # judges it segment by segment, so `jj log && jj split` is caught on its second
-    # half instead of sliding past — Claude Code splits compound commands itself
-    # before applying permissions.deny, and this is the same job done where the
-    # payload lands.
-    #
-    # It lives here, once, because it did not: `requires` below and codex.nix's
-    # denyGuard each carried their own copy, and the copies were the parser — the
-    # part that decides whether a deny fires at all. The bug that cost the most is
-    # worth keeping written down, since it is the one a rewrite would reintroduce:
-    # `tr` leaves a TRAILING space on every segment but the last, so trimming only
-    # the leading side made `jj split && jj log` produce "jj split " and an exact
-    # pattern never matched it. The deny held for `jj log && jj split` and not for
-    # the reverse, which is the ordering that happened to get tested. Trim both
-    # ends. Empty segments are dropped so a caller never has to check for them.
-    #
-    # One newline in SET2, not four: tr pads a short SET2 by repeating its last
-    # character, so the two forms are identical (verified, not assumed). The
-    # spelled-out version reads as clearer and is what shellcheck's SC2020 fires
-    # on — it cannot tell deliberate padding from a set written by mistake, and
-    # the guards are shellchecked at build time now (see writeGuard above).
-    segments() {
-      printf '%s' "$cmd" | tr ';|&\n' '\n' |
-        sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
-    }
+    ${segmentsFn}
   '';
 
   # An `if` filter is a precondition, and a precondition you do not check is one you
@@ -163,7 +388,7 @@ rec {
     publishGate = "Nothing is gated on gitleaks or `nix flake check`: not `jj commit` and `jj git push`, and not the verbs that make working-copy content permanent (`jj new`, `jj squash`, `jj split <paths>`). Run both yourself before publishing, and remember a secret reaches `@-` the moment one of those runs, not at push.";
     colocatedCommitGuard = "`git commit` in a colocated repo is not caught for you; `ls -d .jj .git` is the check to run first.";
     untrackedNixGuard = "A referenced-but-untracked `.nix` file is not caught before the flake fails on it — `git add` a new file yourself.";
-    commandShapeGuard = "The law-1 command shapes are not refused for you.";
+    commandShapeGuard = "The law-1 command shapes, the truncation trap, fd's bundled -x, and the wrapped-command backstop for the shared deny list are not refused for you.";
     spillPaginationGuard = "Paginating a spilled tool result back into the context is not refused.";
     shellcheckGate = "A `*.sh` you write is NOT shellchecked when it lands — that gate keys on a field Claude's edit tool sets and `apply_patch` does not, so run `shellcheck -x` yourself before calling a shell script finished.";
     conventionsCheck = "Nothing re-runs check-conventions.sh after `nh os`, so a rebuild that invalidates a rule in these instructions passes unremarked.";
@@ -726,16 +951,16 @@ rec {
     }'
   '';
 
-  # ── the hookable slice of three prose rules ─────────────────────────────────
-  # Each of these was written in ${a.rulesFile} as "never do X" and stayed advisory
-  # until someone asked the better question: not "is this a hard error or a
-  # preference", but "what part of it can a hook actually see". The second
-  # question is necessary and not sufficient — `grep -r` and bare `find` are just
-  # as visible and are deliberately NOT here, because violating those costs a
-  # slower search and nothing else. A wall is worth a round trip only when the
-  # violation costs something you cannot get back.
+  # ── the hookable slice of three prose rules, plus two segment-level backstops ─
+  # Each of the first three was written in ${a.rulesFile} as "never do X" and
+  # stayed advisory until someone asked the better question: not "is this a hard
+  # error or a preference", but "what part of it can a hook actually see". The
+  # second question is necessary and not sufficient — `grep -r` and bare `find`
+  # are just as visible and are deliberately NOT here, because violating those
+  # costs a slower search and nothing else. A wall is worth a round trip only
+  # when the violation costs something you cannot get back.
   #
-  # There is no `if` filter, because one rule string cannot express three
+  # There is no `if` filter, because one rule string cannot express five
   # unrelated shapes, so the prefilter below stands in for it. It is a literal
   # match on the raw payload before any fork. `>` is common enough that the
   # redirect arm pays a jq on many calls: 17ms for a payload carrying one against
@@ -744,18 +969,74 @@ rec {
   # milliseconds" is what this said before it was measured rather than estimated;
   # the trade is the same, but the number now comes from hyperfine -N over 20 runs
   # of the built guard against a payload file, 2026-08-26.)
+  # The literal prefilter for commandShapeGuard, as data — and the same list it
+  # declares as its replay offTrigger, so the two cannot disagree about what the
+  # guard is even about. It used to be a `case` in the body and a list in the
+  # replay block, which is the shape the spillTriggers comment in claude.nix
+  # already warns against.
+  #
+  # The first ten are the shapes the guard's own arms look for. `denyPrefixes` is
+  # what the backstop needs, and adding it is what closed the wrapper leaks:
+  # `timeout 60 nvim`, `FOO=1 nvim` and `, nvim` all unwrap to a denied verb, and
+  # the guard used to exit before unwrapping anything, because none of them
+  # contains a literal from the hand-written half. A prefilter derived from the
+  # deny list cannot fall behind the deny list.
+  #
+  # The cost is real and was measured before taking it: this widens the guard to
+  # most Bash calls, and the arms behind it now run over the corpus's worst
+  # payload (41K, 667 segments) in 0.23s against a 10s timeout. The check that
+  # this widening changed no decision it should not have is not L3 — which goes
+  # vacuous as the off-trigger set collapses — but the corpus decision diff
+  # between the old guard and the new one.
+  #
+  # Reduced to the literals that are not already implied by a shorter one. A
+  # substring test asks "does the payload contain any of these", so a literal
+  # that CONTAINS another can never decide anything the shorter one did not
+  # already decide: `*'fd -x'*` is dead weight beside `*'fd'*`, and
+  # `*'devenv shell'*` beside `*'env '*`. shellcheck is what makes this
+  # mandatory rather than tidy — SC2221/SC2222 fail the guard's build on a case
+  # arm that another arm subsumes, which is a lint worth having on a list that
+  # is now generated from two sources and could quietly grow overlaps.
+  commandShapeTriggers =
+    let
+      raw = [
+        "nix profile"
+        "nix-env"
+        "bin/activate"
+        ">"
+        "nix shell"
+        "nix run"
+        "bash -c"
+        "sh -c"
+        "env "
+        "fd "
+        "timeout "
+        ", "
+        "comma "
+        "devenv shell"
+        "direnv exec"
+      ]
+      ++ denies.denyPrefixes;
+    in
+    lib.filter (t: !(lib.any (u: u != t && lib.hasInfix u t) raw)) (lib.unique raw);
+
   commandShapeGuard = writeGuard "${a.prefix}-guard-command-shape" ''
     set -u
     ${a.escalateFn}
     input=$(cat)
     # This arm is total rather than a shrug, and it is why this one guard does not
-    # use guardPreamble: the test is a literal substring match on the raw payload,
-    # which cannot fail to parse. A payload containing none of these literals
-    # definitely does not contain a command this guard has an opinion about, so
-    # allowing it is an answer, not a guess — and the jq fork is skipped on the
-    # majority of Bash calls, which is the point of testing here first.
+    # use guardPreamble's cmd/cwd extraction: the test is a literal substring match
+    # on the raw payload, which cannot fail to parse. A payload containing none of
+    # these literals definitely does not contain a command this guard has an
+    # opinion about, so allowing it is an answer, not a guess — and the jq fork is
+    # skipped on the majority of Bash calls, which is the point of testing here
+    # first. The wrapper idioms and `fd ` joined the original four once the checks
+    # below grew segment-and-wrapper depth (see segmentsFn's own comment) —
+    # otherwise the very payloads that motivated that depth would exit here first.
+    # The list is commandShapeTriggers, generated: see its comment for why the
+    # deny list's own prefixes are in it.
     case $input in
-    *"nix profile"* | *"nix-env"* | *"bin/activate"* | *">"*) ;;
+    ${lib.concatMapStringsSep " \\\n      | " (t: "*${lib.escapeShellArg t}*") commandShapeTriggers}) ;;
     *) exit 0 ;;
     esac
     # Two reads rather than one `@sh` line through `eval`. The eval was a real hole:
@@ -775,19 +1056,73 @@ rec {
       ${jq} -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
       exit 0
     }
+    ${segmentsFn}
+
+    # Computed ONCE, and the arms below read the variable. Each of them used to
+    # call `segments` again, so one payload paid for four identical passes over
+    # the same command against a 10s hook timeout — and the prefilter that gates
+    # this guard passes most Bash calls, since a bare `>` is in it.
+    segs=$(segments)
 
     # Law 1. `install` is the old spelling, `add` the current one; both are denied
-    # so a command copied from older docs fails the same way.
-    case $cmd in
-    *"nix profile install"* | *"nix profile add"* | *"nix-env -i"* | *"nix-env --install"*)
-      deny "law 1: nothing is installed imperatively, and this would write a profile nix does not own. Persistent → modules/nixos/packages.nix (system) or modules/home/default.nix (user), then hand the switch over. One-off → nix shell nixpkgs#<pkg> -c <cmd>. Per-project → devenv.nix." ;;
-    esac
+    # so a command copied from older docs fails the same way. Segment-anchored and
+    # whitespace-collapsed, not a substring of the whole command: unanchored, a
+    # read-only `grep -n "nix profile install" file` was denied as though it were
+    # performing the install it merely quoted, and `nix  profile  install` (one
+    # extra space) defeated the exact-text match the other way. `segments`
+    # includes `bash -c`/wrapped forms, so `bash -c 'nix profile install x'` is
+    # still caught. Residual and accepted, not fixed here: `nix "profile" install`
+    # still defeats a prefix match, the same way `git "commit"` defeats every
+    # other segment-anchored pattern in this file — see segmentsFn's comment.
+    law1_hit=0
+    while IFS= read -r seg || [ -n "$seg" ]; do
+      # The whitespace-collapsing `sed` is a fork, and this loop runs once per
+      # segment of every guarded command — 667 of them in the largest payload on
+      # record. Every pattern below starts with "nix", so a segment that does
+      # not cannot match, and a `case` test costs nothing.
+      case "$seg" in
+      nix* | ,* | comma*) ;;
+      *) continue ;;
+      esac
+      seg_norm=$(printf '%s' "$seg" | sed -E 's/[[:space:]]+/ /g')
+      case "$seg_norm" in
+      "nix profile install"* | "nix profile add"* | "nix-env -i"* | "nix-env --install"* \
+        | ", -i"* | ", --install"* | "comma -i"* | "comma --install"*)
+        law1_hit=1 ;;
+      esac
+    done <<CMDSEG_LAW1
+    $segs
+    CMDSEG_LAW1
+    if [ "$law1_hit" -eq 1 ]; then
+      deny "law 1: nothing is installed imperatively, and this would write a profile nix does not own. Persistent → modules/nixos/packages.nix (system) or modules/home/default.nix (user), then hand the switch over. One-off → \`, <cmd>\` or nix shell nixpkgs#<pkg> -c <cmd> — comma without -i runs the program and leaves nothing behind, which is the whole point of it. Per-project → devenv.nix."
+    fi
 
     # "never hand-activate a venv" — uv is the only route to an interpreter here.
-    case $cmd in
-    *"bin/activate"*)
-      deny "law 1 for Python: activating a venv by hand puts an interpreter on PATH that nothing declares. Use uv run / uv run -m / uvx, or uv add and uv sync inside a project." ;;
-    esac
+    # By the segment's first word (after stripping a `source`/`.` prefix), not a
+    # substring of the whole command: the real idiom is `source .venv/bin/activate`
+    # or `. .venv/bin/activate`, where "bin/activate" is never the start of the
+    # segment, so a prefix match would miss it — but a substring match denied a
+    # `grep -n "bin/activate" file` for merely quoting the path.
+    venv_hit=0
+    while IFS= read -r seg || [ -n "$seg" ]; do
+      # Same reason as the loop above: the `sed` that extracts the first word is
+      # a fork per segment, and a segment that does not contain the path at all
+      # cannot have it as its first word. The substring test is the cheap half
+      # of the check; the expensive half still decides.
+      case "$seg" in
+      *bin/activate*) ;;
+      *) continue ;;
+      esac
+      first=$(printf '%s' "$seg" | sed -E 's/^(source|\.)[[:space:]]+//; s/^([^[:space:]]+).*$/\1/')
+      case "$first" in
+      bin/activate | */bin/activate) venv_hit=1 ;;
+      esac
+    done <<CMDSEG_VENV
+    $segs
+    CMDSEG_VENV
+    if [ "$venv_hit" -eq 1 ]; then
+      deny "law 1 for Python: activating a venv by hand puts an interpreter on PATH that nothing declares. Use uv run / uv run -m / uvx, or uv add and uv sync inside a project."
+    fi
 
     # "never `> tmp && mv tmp f`" — the half of that rule with teeth is the
     # narrower `cmd f > f`, where the shell truncates f before the reader opens
@@ -796,36 +1131,151 @@ rec {
     # word appears in the part of the command before it. Gated on the target
     # already existing: creating a new file destroys nothing, and the check would
     # rather miss than block a legitimate write.
+    #
+    # A REGULAR file, not merely an existing path. The premise is that the shell
+    # empties the target before the reader opens it, and only a regular file can
+    # be emptied — writing to `/dev/null` truncates nothing, and a directory
+    # cannot be a redirect target at all. With `-e` this arm was the largest
+    # false-positive source left on the machine: `echo a > /dev/null && echo b >
+    # /dev/null` denied itself, because the last `>` target is `/dev/null` and
+    # the text before it contains `/dev/null` too. Measured over the recorded
+    # corpus 2026-08-30: 15 denies in 14,068 commands, of which 4 were this —
+    # three `/dev/null` pairs and one `/data`, which is a directory.
     tgt=$(printf '%s' "$cmd" | sed -n 's/^.*[^>&]>[[:space:]]*\([^[:space:];|&<>]\{1,\}\).*$/\1/p')
     if [ -n "$tgt" ]; then
       bef=$(printf '%s' "$cmd" | sed -n 's/^\(.*[^>&]\)>[[:space:]]*[^[:space:];|&<>]\{1,\}.*$/\1/p')
       case " $bef " in
       *" $tgt "*)
-        if [ -e "$tgt" ] || { [ -n "$cwd" ] && [ -e "$cwd/$tgt" ]; }; then
+        if [ -f "$tgt" ] || { [ -n "$cwd" ] && [ -f "$cwd/$tgt" ]; }; then
           deny "'$tgt' is both an input and the redirect target: the shell truncates it before the command reads it, so the file is emptied and the command sees nothing. Edit in place with | sponge instead."
         fi
         ;;
       esac
     fi
+
+    # `fd -x/-X/--exec` runs an arbitrary command per result — agent-denies.nix
+    # already says so, but its patterns need "-x"/"-X" as an isolated token, and
+    # fd's clap parser bundles short flags: `fd -ix` is `-i` (case-insensitive) +
+    # `-x` (exec), invisible to a pattern looking for a lone "-x". A case glob
+    # cannot tell that apart from `--regex` or `--fixed-strings`, both of which
+    # contain an "x" too, without false-positiving on the common case — so this
+    # word-splits instead. `set -f` before the unquoted `set --` turns off
+    # globbing first, so a result like `*.txt` in the command is never expanded
+    # against the real filesystem; nothing here is executed, only classified.
+    #
+    # The cluster is read LEFT TO RIGHT and stops at the first short flag that
+    # takes a value, because clap accepts the value attached: `fd -exml` is `-e
+    # xml`, and asking only whether an "x" appears anywhere in the word denied
+    # it as an exec — every `-e<ext>` whose extension carries an x, plus `-ox`
+    # and `-Cx…`, went with it. Observed on this machine 2026-08-30, refusing an
+    # extension search over this repo. The value-taking set is `fd --help` on
+    # the installed binary, not memory: d E t e S o c j C (x and X take one too,
+    # but they are the thing being caught, so they are tested before the break).
+    fdx_hit=0
+    while IFS= read -r seg || [ -n "$seg" ]; do
+      case "$seg" in
+      "fd "*)
+        bundled=$(
+          set -f
+          # shellcheck disable=SC2086
+          set -- $seg
+          shift
+          for w in "$@"; do
+            case "$w" in
+            --*) ;;
+            -*)
+              rest=''${w#-}
+              while [ -n "$rest" ]; do
+                ch=''${rest:0:1}
+                rest=''${rest:1}
+                case "$ch" in
+                x | X)
+                  printf hit
+                  break
+                  ;;
+                d | E | t | e | S | o | c | j | C) break ;;
+                esac
+              done
+              ;;
+            esac
+          done
+        )
+        [ -n "$bundled" ] && fdx_hit=1
+        ;;
+      esac
+    done <<CMDSEG_FDX
+    $segs
+    CMDSEG_FDX
+    if [ "$fdx_hit" -eq 1 ]; then
+      deny "\`fd -x/-X/--exec\` runs an arbitrary command per result — bundled into another short flag (\`fd -ix\`) is still that flag. Run the command yourself over the results instead."
+    fi
+
+    ${lib.optionalString a.needsWrappedDenyBackstop ''
+      # The backstop for the other agent-denies.nix groups (docker, the TUI list,
+      # jj's diff editor, sudo's switch, sg). For this agent they are enforced
+      # DECLARATIVELY, and a declarative pattern reads `$cmd` itself: it does not
+      # follow `bash -c`, `env`, `timeout` or `nix shell … -c`. Found live: `nix
+      # shell nixpkgs#neovim -c nvim` passed untouched, the exact TUI hang that
+      # wall exists to prevent, because law 1's own one-off-tool idiom is
+      # indistinguishable at the text-matching layer from a deliberate bypass.
+      #
+      # Emitted only for the agent that needs it. Codex enforces the same list
+      # through codex.nix's denyGuard, which is a hook over `segments` — raw
+      # forms AND unwrapped ones, on every Bash call, with no prefilter — so for
+      # Codex this block would be a second evaluation of the same arms over a
+      # subset of the same input. One list, one translation (denyCaseArms), and
+      # now one evaluation per agent rather than two for the one that already
+      # had a hook.
+      #
+      # `wrapped_segments` and not `segments`: the raw forms are what the
+      # declarative deny already judges, so re-judging them here buys no coverage
+      # and does cost a false-positive class. `raw_segments` splits on \n, so
+      # every LINE OF A HEREDOC BODY is a segment, and writing a file whose text
+      # contained `vi notes.txt` was denied as though it had launched vim — with
+      # every `cat > f <<EOF` in scope, since a bare `>` is in the prefilter.
+      # File content is not a command, and a wall that cannot be described inside
+      # a heredoc is one whose documentation cannot be written on the machine it
+      # guards. Observed 2026-08-30, refusing a plain scratchpad note.
+      #
+      # Residual, stated rather than fixed: Codex's denyGuard still judges raw
+      # segments, heredoc bodies included, because it is Codex's only deny and
+      # skipping bodies would open `bash <<EOF` — where the body IS the command.
+      #
+      # Local to this guard rather than beside `segments` in segmentsFn: it is
+      # the only caller, and shared code that only one of six guards invokes is
+      # what SC2329 fires on — correctly, since the others would carry a function
+      # nothing there calls.
+      wrapped_segments() {
+        raw_segments | while IFS= read -r seg || [ -n "$seg" ]; do
+          unwrapped_of "$seg"
+        done
+      }
+      while IFS= read -r seg || [ -n "$seg" ]; do
+        # shellcheck disable=SC2016
+        case "$seg" in
+        ${denyCaseArms}
+        esac
+      done <<CMDSEG_BACKSTOP
+      $(wrapped_segments)
+      CMDSEG_BACKSTOP
+    ''}
     exit 0
   '';
 
   replay.commandShapeGuard = {
     # The guard's own literal prefilter, as data: a payload carrying none of
-    # these is one it exits on before it parses anything.
+    # these is one it exits on before it parses anything. The SAME value the body
+    # builds its `case` from, not a copy of it — see commandShapeTriggers.
     #
-    # Worth knowing before editing this block. Unlike every other guard here,
-    # this one matches unanchored substrings of the whole payload, so a command
-    # that merely CONTAINS one of the shapes below is denied — writing these
-    # routes through a shell heredoc is refused by the very guard they describe.
-    # The routes are data in a nix file precisely so they never have to be typed
-    # into a Bash call again.
-    offTrigger = [
-      "nix profile"
-      "nix-env"
-      "bin/activate"
-      ">"
-    ];
+    # Since it gained denyPrefixes this set matches most Bash calls, which makes
+    # L3 non-interference a weaker statement than it reads as: the off-trigger
+    # corpus it quantifies over has mostly collapsed into the on-trigger one.
+    # What actually covers the widened surface is replaying the corpus through
+    # the old guard and the new one and diffing the decisions — every change
+    # accounted for, no unexplained allow→deny. That is a harness step, not a
+    # law, and it is written down here because the law it partly replaces is not
+    # the one to read for this guard any more.
+    offTrigger = commandShapeTriggers;
     routes = [
       {
         command = "nix profile install hello";
@@ -857,6 +1307,72 @@ rec {
         command = "sort flake.nix | sponge flake.nix";
         want = "allow";
       }
+      # The false-positive class: reading or quoting a guarded phrase is not
+      # performing it, the same law `requires`'s own comment already states for
+      # every other guard in this file.
+      {
+        command = "grep -n \"nix profile install\" claude/CLAUDE.md";
+        want = "allow";
+      }
+      {
+        command = "grep -n \"bin/activate\" claude/CLAUDE.md";
+        want = "allow";
+      }
+      # The bypass class: a wrapper around the same guarded verb, and the extra-
+      # whitespace variant that used to defeat the exact-text match.
+      {
+        command = "bash -c 'nix profile install hello'";
+        want = "deny";
+      }
+      {
+        command = "nix profile  install  hello";
+        want = "deny";
+      }
+      # The wrapper class, allow side. Law 1's own remedy for an UNRELATED tool
+      # must still be allowed, the documented mergiraf remedy for jj's diff
+      # editor must stay open, and QUOTING a wrapped shape is not running it —
+      # the last two were denied until `unwrap`'s arms were anchored and the
+      # backstop narrowed to wrapped segments, which between them are what let
+      # this repo be searched and documented on the machine it configures.
+      #
+      # Asserted for BOTH agents. The deny side is emitted only for the agent
+      # that carries the backstop (see it in the guard body), but a false
+      # positive is a false positive in either.
+      {
+        command = "nix shell nixpkgs#mergiraf -c jj resolve --tool mergiraf";
+        want = "allow";
+      }
+      {
+        command = "grep -n \"nix shell nixpkgs#neovim -c nvim --version\" claude/CLAUDE.md";
+        want = "allow";
+      }
+      {
+        command = "cat > /tmp/note.txt <<'NOTE'\nvi notes.txt\ndocker ps\nNOTE";
+        want = "allow";
+      }
+      # fd's bundled short flags: `-ix` is `-i` + `-x`, invisible to a pattern
+      # anchored on a lone "-x" token. `-e py` alone, and a long `--regex`
+      # argument that happens to contain the letter x, must both stay allowed —
+      # the check is on bundled SHORT flags, not on the letter appearing anywhere.
+      {
+        command = "fd -ix true .";
+        want = "deny";
+      }
+      {
+        command = "fd -e py file.txt";
+        want = "allow";
+      }
+      {
+        command = "fd --regex ax somefile";
+        want = "allow";
+      }
+      # clap takes a short flag's value attached, so the "x" here is data, not a
+      # flag. `-ix` above must stay denied with this allowed, which is the whole
+      # reason the cluster is parsed left to right instead of searched.
+      {
+        command = "fd -exml . claude";
+        want = "allow";
+      }
       # The truncation arm is gated on the target already existing, so the probe
       # names a file this repo always has.
       {
@@ -866,6 +1382,88 @@ rec {
       {
         command = "sort flake.nix > /tmp/sorted.nix";
         want = "allow";
+      }
+      # …and the arm's premise stated as a route: only a REGULAR file can be
+      # emptied by the shell before the reader opens it. Two redirects to the
+      # same device made the last-target/text-before test fire on itself.
+      {
+        command = "echo a > /dev/null && echo b > /dev/null";
+        want = "allow";
+      }
+      # Law 1 has a second spelling now that comma is taught rather than merely
+      # present: `-i` installs into a profile nix does not own, which is the
+      # thing law 1 is about, in the tool whose whole point is not doing that.
+      {
+        command = ", -i ripgrep";
+        want = "deny";
+      }
+      {
+        command = ", typos --format brief .";
+        want = "allow";
+      }
+    ]
+    # The deny side of the wrapper class, for the agent whose deny list is
+    # declarative and therefore stops at the wrapper. The other agent asserts
+    # the same shapes against codex.nix's denyGuard, where its own copy of the
+    # rule actually lives — a route on a guard that does not carry the arm would
+    # be green for the wrong reason, which is the failure this harness exists to
+    # make impossible.
+    #
+    # Each one walked straight through while its bare form was refused. The
+    # first needs the unwrap to RECURSE (one level left `bash -c 'nix shell …
+    # -c nvim'` looking like an unremarkable `nix shell` line), the second needs
+    # `timeout` to count as a wrapper at all, the third needs the extraction to
+    # take the FIRST ` -c ` — greedy, the guard saw `"set nowrap"` and nothing
+    # else — and the fourth is the spelling that needs no `-c`, keyed on the
+    # package attr in agent-denies.nix and carried through the wrapper by the
+    # backstop.
+    ++ lib.optionals a.needsWrappedDenyBackstop [
+      {
+        command = "nix shell nixpkgs#neovim -c nvim --version";
+        want = "deny";
+      }
+      {
+        command = "nix shell nixpkgs#docker -c docker ps";
+        want = "deny";
+      }
+      {
+        command = "bash -c 'nix shell nixpkgs#neovim -c nvim'";
+        want = "deny";
+      }
+      {
+        command = "timeout 60 nix shell nixpkgs#docker -c docker ps";
+        want = "deny";
+      }
+      {
+        command = "nix shell nixpkgs#neovim -c nvim -c \"set nowrap\"";
+        want = "deny";
+      }
+      {
+        command = "bash -c 'nix run nixpkgs#neovim'";
+        want = "deny";
+      }
+      # The wrapper leaks. None of these contains a literal from the prefilter's
+      # hand-written half, so until it carried the deny list's own prefixes the
+      # guard exited before unwrapping anything and all four ran the TUI.
+      {
+        command = ", nvim";
+        want = "deny";
+      }
+      {
+        command = "timeout 60 nvim";
+        want = "deny";
+      }
+      {
+        command = "FOO=1 nvim";
+        want = "deny";
+      }
+      {
+        command = "devenv shell -- nvim";
+        want = "deny";
+      }
+      {
+        command = "direnv exec . nvim";
+        want = "deny";
       }
     ];
   };

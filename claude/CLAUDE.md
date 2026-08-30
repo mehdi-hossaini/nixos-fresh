@@ -6,13 +6,16 @@ derive it from here rather than guessing.
 1. **Nothing is installed imperatively.** Persistent → `/etc/nixos`
    (`modules/nixos/packages.nix` for the system, `modules/home/default.nix` for the
    user), taken to a clean `nh os build` and then handed over — the switch itself is
-   denied here and is the user's to run (law 3). One-off → `nix shell nixpkgs#<pkg>
-   -c`. Per-project → `devenv.nix`.
+   denied here and is the user's to run (law 3). One-off → `, <cmd>`, or `nix shell
+   nixpkgs#<pkg> -c <cmd>` when you know the attribute. Per-project → `devenv.nix`.
 2. **A missing tool is a decision, not a breakage.** `command not found` means the
    absence is deliberate — usually so a system copy cannot shadow a project's pinned
-   toolchain. Look it up in the inventory, and `nix-locate bin/<name>` when it is not
-   there — that says which package ships it, which is what you need to borrow it with
-   `nix shell` rather than install around it.
+   toolchain. Look it up in the inventory, then borrow it rather than install around
+   it: `, <cmd>` runs it in one step, resolving the name through the same nix-index
+   database `nix-locate bin/<name>` reads. Reach for `nix-locate` when you want the
+   package name rather than the run, and for `nix shell nixpkgs#<pkg> -c <cmd>` when
+   you need a particular package, several commands in one shell, or `,` came back
+   ambiguous — it prints its candidates and that command is what to do with them.
 3. **No prompt can be answered.** No terminal, no display: an editor, a password, a TUI
    or an askpass dialog fails or hangs rather than waiting. Known instances are `EDITOR`
    (pinned to `false`), `sudo` behind `nh os switch`, and git askpass on an HTTPS remote
@@ -21,12 +24,18 @@ derive it from here rather than guessing.
 4. **Rules are declared; state is not.** `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`
    and `check-conventions.sh` are read-only store symlinks — edit `/etc/nixos/claude/`
    and rebuild. AGENTS.md is generated from this file, so there is one source and not
-   two. The editor guard, the deny rules and the hooks are *generated* too: the
-   guards live in `modules/nixos/agent-guards.nix` and the deny list in
-   `agent-denies.nix`, shared by both agents, and `claude.nix` / `codex.nix` attach
-   them — into `/etc/claude-code/managed-settings.json` and
-   `/etc/codex/requirements.toml` respectively. There is no JSON or TOML file to
-   edit, and the reasoning for each rule sits beside it in the nix. Only
+   two. The deny rules and the hooks are *generated* too: the guards live in
+   `modules/nixos/agent-guards.nix` and the deny list in `agent-denies.nix`, shared by
+   both agents, and `claude.nix` / `codex.nix` attach them — into
+   `/etc/claude-code/managed-settings.json` and `/etc/codex/requirements.toml`
+   respectively, both tiers the user cannot override mid-session. The editor guard
+   (law 3) is not the same claim on both sides: for Claude it lives inside that same
+   managed-settings.json, so it is as much a wall as the deny rules. For Codex it is
+   *environment*, and `requirements.toml` has no vocabulary for environment, so it
+   lands in `/etc/codex/managed_config.toml` instead — a defaults file the user can
+   change mid-session. Treat `EDITOR=false` there as a default worth respecting, not
+   a wall a Codex session is structurally unable to cross. There is no JSON or TOML
+   file to edit, and the reasoning for each rule sits beside it in the nix. Only
    `~/.claude/settings.json` is writable in place; it holds state (theme), not rules.
 5. **Nothing survives unless declared.** Impermanence is on — only declared or persisted
    paths outlive a reboot, and `modules/nixos/impermanence.nix` is the list. Use the
@@ -69,7 +78,8 @@ machine.
 
 Two obligations follow from law 6. **A new assertion or guard is not finished until it
 has been watched going red on purpose** — the `INVENTORY=` / `MANAGED=` / `SETTINGS=` /
-`GUARDS=` overrides exist for that, or a doctored binary earlier on `PATH`. And **a law
+`CODEX_MANAGED=` / `GUARDS=` overrides exist for that, or a doctored binary earlier on
+`PATH`. And **a law
 that cannot be followed from its own text is incomplete**: say where the missing step
 lives, or the gap gets filled by guessing.
 
@@ -216,7 +226,8 @@ The model, which is what makes the command map read strangely at first:
 
 **Never trigger an editor.** Agent sessions pin `JJ_EDITOR` / `GIT_EDITOR` / `EDITOR` /
 `VISUAL` to `false`, so a forgotten `-m` or an `--editor` flag fails fast instead of
-hanging on a GUI window. That guard does not reach the **diff** editor. These open a
+hanging on a GUI window — an unoverridable wall for Claude, an overridable default for
+Codex (law 4). That guard does not reach the **diff** editor. These open a
 TUI an agent shell cannot drive: bare `jj split`; `jj diffedit` and `jj resolve` with
 or without paths; any `-i` / `--interactive` flag; any interactive `--tool`,
 `:builtin` included. The forms that stay safe are `jj split <paths>`,
@@ -296,8 +307,20 @@ devenv shell -- <cmd>        # equivalent, without direnv
 A new project needs `devenv.nix`, an `.envrc` containing `use devenv`, and one
 `direnv allow`.
 
-For a tool needed once, and nowhere else: `nix shell nixpkgs#<pkg> -c <cmd>` — it
-leaves nothing behind.
+For a tool needed once, and nowhere else, both of these leave nothing behind:
+
+```
+, <cmd> [args]               # by command name, resolved through nix-index
+nix shell nixpkgs#<pkg> -c <cmd>   # by package attribute
+```
+
+`,` is the shorter one and usually right, since what you have is a command name and
+not an attribute. Two things to know about it. When more than one package provides
+the command it cannot choose — a picker needs a terminal (law 3) — so it prints the
+candidates to stderr and exits 1; run the named `nix shell` form with the one you
+meant, or `, -p <cmd>` to see that list without running anything. And `, -i` is
+denied: it installs into a profile, which is law 1, in the tool whose whole purpose
+is not doing that.
 
 Law 1 in practice: system packages go in `modules/nixos/packages.nix`, user ones in
 `modules/home/default.nix`, then a clean `nh os build /etc/nixos` and the switch is
@@ -311,18 +334,29 @@ activate, and an agent shell has no terminal to type a password into, so it fail
 `sudo: a terminal is required`. Take the work as far as a clean build, then hand the
 switch to the user. New files must be `git add`ed first or the flake cannot see them.
 
+That generation diff says how much changed, not why. `nix-diff <old> <new>` on the
+two store paths `nh` prints as `<<<` and `>>>` walks down to the first real
+difference; add `--environment` when the inputs look identical and the change is a
+variable.
+
 ## Shell
 
 - Login shell is **fish**, which is not POSIX. Write scripts for bash and run them
   with `bash script.sh` rather than fighting `export`, arrays, or `$(...)` quirks.
-- Prefer `rg` over `grep -r` and `fd` over `find`. No structural/AST search is on
-  PATH: `, ast-grep …` fetches one for a single command on the rare occasion a
-  regex genuinely cannot express the pattern.
+- Prefer `rg` over `grep -r` and `fd` over `find`. `ast-grep` is on PATH for the
+  pattern a regex genuinely cannot express — a call shape, a nested attribute, a
+  node kind rather than a run of characters. It is the third choice, not the
+  first: rg answers most questions here and is faster at them. `-i` opens an edit
+  session and is denied; `--json` to read the matches, `-U` to apply them all.
 - `curl` is present; `wget` is not.
 - Edit a file in place with `| sponge`, never `> tmp && mv tmp f` — `> f` truncates
   before the reader runs, and a dropped `&&` leaves the edit unapplied and silent.
 - `jq` for JSON; `yq` / `tomlq` / `xq` take the same syntax over YAML, TOML and XML.
-  Reach for those over `sed` on structured files.
+  Reach for those over `sed` on structured files. Two ways to get there from data
+  that is not any of them: `jc` turns a CLI's own output into JSON (`ps aux | jc
+  --ps`, `jc -a` lists the parsers), and `mlr` reads CSV/TSV/JSON-lines as records
+  (`mlr --icsv --ojson cut -f a,b then sort -nr c`). `mlr repl` is a REPL and is
+  denied; every other verb is a filter over stdin.
 - Never guess at a NixOS option (law 6). `nix eval --raw
   /etc/nixos#nixosConfigurations.<host>.options.<path>.description` gives the docs and
   `…config.<path>` the live value; `nixos-option <path>` also works. `nix eval` is

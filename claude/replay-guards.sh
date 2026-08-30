@@ -202,11 +202,6 @@ run_guard() {
     printf '  note  %s on-trigger commands dropped (skipOnTrigger: the triggered path does real work)\n' \
       "$dropped" >>"$log"
   fi
-  if [ -s "$work/err.$idx" ]; then
-    printf '  note  the guard wrote to stderr on some payloads — not a decision, but an arm that died quietly:\n' >>"$log"
-    sort -u "$work/err.$idx" | head -3 | sed 's/^/        /' >>"$log"
-  fi
-
   # ── L3 non-interference ────────────────────────────────────────────────────
   local off_total off_bad
   off_total=$(jq -s '[.[] | select(.on == false)] | length' "$work/verdicts.$idx")
@@ -223,7 +218,7 @@ run_guard() {
   # ── L2 no self-block ───────────────────────────────────────────────────────
   # The declared routes: what the deny message names as the way out must be
   # allowed, and the shape the guard exists to refuse must be denied.
-  local nroutes r cmd want estop out decision reason
+  local nroutes r cmd want estop out rc decision reason
   nroutes=$(jq '.routes | length' <<<"$entry")
   for ((r = 0; r < nroutes; r++)); do
     cmd=$(jq -r ".routes[$r].command" <<<"$entry")
@@ -232,9 +227,21 @@ run_guard() {
     if [ "$estop" = true ]; then
       printf 'replay probe\n' >"$rt/agent-estop"
     fi
-    out=$(jq -nc --arg c "$cmd" --arg cwd "$CWD" '{cwd:$cwd, tool_input:{command:$c}}' | "$guard" 2>&1)
+    # rc is read exactly like L1's: a route whose guard invocation crashes (any
+    # non-zero exit) is a route failure regardless of what, if anything, reached
+    # stdout — before this, empty stdout from a crash and empty stdout from a
+    # genuine allow were the same "decision=allow", so a guard that died silently
+    # on its own declared route passed as the law it was meant to demonstrate.
+    # stderr is kept out of $out for the same reason L1 keeps it out at line
+    # 163 above: folded in with 2>&1, a route's own benign stderr chatter reads
+    # as an unparsable decision and fails a route that actually allowed
+    # correctly.
+    out=$(jq -nc --arg c "$cmd" --arg cwd "$CWD" '{cwd:$cwd, tool_input:{command:$c}}' | "$guard" 2>>"$work/err.$idx")
+    rc=$?
     rm -f "$rt/agent-estop"
-    if [ -z "$out" ]; then
+    if [ "$rc" -ne 0 ]; then
+      decision=crash
+    elif [ -z "$out" ]; then
       decision=allow
     else
       decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "undecided"' 2>/dev/null)
@@ -247,6 +254,17 @@ run_guard() {
       [ -n "$reason" ] && printf '        %s\n' "$(printf '%s' "$reason" | head -c 200)" >>"$log"
     fi
   done
+
+  # Both loops above append the guard's stderr to this file, so the note has to
+  # come after BOTH of them. It used to sit between L1 and L3, which meant every
+  # byte L2 wrote was collected into a file nothing read again — a route whose
+  # sed died lost that arm silently while still reporting the decision the route
+  # wanted, which is the exact failure the L1 comment at the top of this function
+  # says the file exists to surface.
+  if [ -s "$work/err.$idx" ]; then
+    printf '  note  the guard wrote to stderr on some payloads — not a decision, but an arm that died quietly:\n' >>"$log"
+    sort -u "$work/err.$idx" | head -3 | sed 's/^/        /' >>"$log"
+  fi
 
   # ── the deny set, for eyeballing ───────────────────────────────────────────
   local denied

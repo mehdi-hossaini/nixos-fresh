@@ -159,6 +159,14 @@
             # The ANSI mapping from modules/home/default.nix. Backgrounds are absent
             # on purpose: base00, base02 and backgroundHard are grounds, and holding
             # a ground to a text ratio is a category error.
+            #
+            # The two 256-colour indexes at the end are the slots this list used to
+            # miss, and missing them is how a check that reads as total stops being
+            # it. Only grounds were ever excluded deliberately; indexes 16 and 17
+            # were excluded by not being thought of, and palette.nix says in the
+            # same breath that "anything written for gruvbox reaches for these" —
+            # as foreground. Index 17 was failing at 4.24:1 the whole time this
+            # check reported green over everything else.
             text = with p; [
               themeBright.base08
               themeBright.base0B
@@ -175,6 +183,20 @@
               themeVivid.base0C
               theme.base05
               theme.base07
+              # indexed_colors 16 and 17.
+              theme.base09
+              orangeDark
+              # The bright set's own base0F. Nothing renders it today, and that
+              # is exactly why it is here: it is a FOREGROUND value in an attrset
+              # a consumer can start reading at any time, and the argument above
+              # — that a check which reads as total stops being one the moment a
+              # foreground slot is left out — does not stop applying because the
+              # slot is currently unused. 6.39:1, so it costs nothing to hold it
+              # to the same line. Its dark twin theme.base0F is deliberately NOT
+              # here: it fails at 4.24:1, which is the whole reason orangeDark
+              # above exists, and palette.nix keeps the supplied value so that
+              # attrset stays a complete gruvbox palette.
+              themeBright.base0F
             ];
           in
           nixpkgs.legacyPackages.${system}.runCommandLocal "alacritty-contrast" { } ''

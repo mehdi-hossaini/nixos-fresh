@@ -174,6 +174,54 @@
     fd
     jq
 
+    # Structural search, for the pattern a regex genuinely cannot express — a
+    # call shape, a nested attribute, a node type rather than a line of text.
+    # Was deliberately absent until 2026-08-30 (0 uses in 10,354 recorded
+    # commands, on a tree of nix and markdown that rg covers), and is here now
+    # because it was asked for by name. nixpkgs ships only `bin/ast-grep`: the
+    # `sg` shortcut upstream also installs is NOT in this derivation, so the
+    # `sg` deny beside it still means util-linux's setgid wrapper and nothing
+    # else. Its interactive halves are denied — see tools.json agent_unsafe.
+    ast-grep
+
+    # The other half of "jq for JSON": jc turns a CLI's own output into JSON, so
+    # `dig`, `ps`, `ls -l` or `systemctl` become something jq can address by
+    # field instead of something awk has to be aimed at by column.
+    jc
+
+    # What actually changed between two closures, when `nh os build`'s +N/-N
+    # line says the size and not the reason. Takes two store paths — usually
+    # the `<<<` and `>>>` nh prints — and walks the derivation graph down to the
+    # first genuine difference.
+    nix-diff
+
+    # Records rather than lines: CSV, TSV, JSON-lines and friends through one
+    # verb chain (`mlr --icsv --ojson cut -f a,b then sort -nr c`). jq's shape
+    # for the formats jq does not read. `mlr repl` is a REPL, hence its
+    # agent_unsafe entry in tools.json.
+    miller
+
+    # How much code is here, by language, in about a second on this tree —
+    # `wc -l` without the comments and blanks, and with a per-language split.
+    # Ships a second binary, `badges`, which serves a badge API on :8080 and
+    # never returns; it is denied through tools.json rather than removed,
+    # because taking one output apart to drop a file is a bigger commitment
+    # than a deny line.
+    scc
+
+    # A diff that parses both sides and compares trees rather than lines, so a
+    # reindent or a moved brace stops reading as a change. `difft a b`, or
+    # `jj diff --tool difft`. Not the default formatter for either VCS: line
+    # diffs are what `jj diff` output is expected to look like, and this is a
+    # per-command choice instead.
+    difftastic
+
+    # A tag index for the tree, which is what a symbol lookup falls back to when
+    # nothing here runs a language server — `ctags -R .` then `readtags -n foo`.
+    # `optscript`, its PostScript-ish interpreter, is a REPL when bare and is
+    # denied in that form only.
+    universal-ctags
+
     # The one-off half of law 1, in one step: `, <cmd>` resolves the command
     # through the same nix-index database nix-locate reads, fetches the package
     # and runs it, leaving nothing behind. No second database to build.

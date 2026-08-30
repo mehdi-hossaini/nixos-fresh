@@ -30,7 +30,29 @@ let
   # extends check-conventions.sh. Reading the file is not IFD: it is a source
   # file in the flake, so fromJSON resolves at eval with nothing to realise.
   inventory = builtins.fromJSON (builtins.readFile ../../tools.json);
-  agentUnsafe = lib.unique (lib.concatMap (t: t.agent_unsafe or [ ]) inventory.tools);
+  # Each entry carries two facts about its tool along with it, because one rule —
+  # `nix run <flake>#<attr>` in agent-denies.nix — is keyed on the package and
+  # not on the command: nothing in the text of `nix run nixpkgs#neovim` says
+  # `nvim`. `package` is the attr to write in that pattern. `primary` is the
+  # entry's FIRST command, which is what `nix run` on that attr actually starts,
+  # and it is what keeps the rule off packages whose hazard is a secondary
+  # binary — scc ships `badges` and universal-ctags ships `optscript`, but
+  # `nix run nixpkgs#scc` is the line counter and `#universal-ctags` is ctags.
+  # Attached here rather than looked up there, so agent-denies.nix keeps taking
+  # one flat list and does not grow a second view of the inventory.
+  agentUnsafe = lib.unique (
+    lib.concatMap (
+      t:
+      map (
+        e:
+        e
+        // {
+          inherit (t) package;
+          primary = lib.head (t.commands or [ t.name ]);
+        }
+      ) (t.agent_unsafe or [ ])
+    ) inventory.tools
+  );
   denies = import ./agent-denies.nix { inherit lib agentUnsafe; };
 
   # ── hook scripts ────────────────────────────────────────────────────────────
@@ -86,7 +108,12 @@ let
   # managed-settings.json is byte-identical across the extraction, which is the
   # only claim worth making about a refactor of the enforcement layer.
   guards = import ./agent-guards.nix {
-    inherit pkgs jq;
+    inherit
+      pkgs
+      jq
+      lib
+      denies
+      ;
     a = {
       prefix = "claude";
       displayName = "Claude";
@@ -99,6 +126,13 @@ let
       # because agent-guards.nix builds the pattern from it AND declares it as the
       # guard's offTrigger, and those two must not be able to disagree.
       spillTriggers = [ "tool-results/" ];
+      # This agent's deny list is DECLARATIVE, and a declarative pattern is
+      # matched against the command as typed — it does not follow `bash -c` or
+      # `nix shell … -c`. So commandShapeGuard carries the wrapped-command
+      # backstop here. Codex sets this false: its deny list is already a hook
+      # over the same wrapper-aware `segments`, so the backstop there would be a
+      # second evaluation of the same arms over a subset of the same input.
+      needsWrappedDenyBackstop = true;
       inherit escalateFn;
     };
   };
@@ -359,6 +393,13 @@ let
       GIT_EDITOR = "false";
       EDITOR = "false";
       VISUAL = "false";
+      # Law 3 again, for the tool CLAUDE.md now names first for a one-off
+      # command. comma's default picker is fzy, which wants a tty; this one
+      # prints the candidates and the explicit `nix shell` form to stderr and
+      # exits. Here rather than in the shell environment because this is a wall
+      # for Claude — same tier as the editor pins above, same reasoning in law 4
+      # — while Codex takes it as a default it could change (codex.nix).
+      COMMA_PICKER = "${guards.commaPicker}";
     };
 
     hooks = {
@@ -692,9 +733,15 @@ in
   # tools.json or `nix eval` instead.
   #
   # And the caveat that applies to the whole file: a deny rule matches what
-  # Claude's own tools run. It does not follow `direnv exec`, `devbox run`, or a
-  # script that calls the same command a level down. It narrows the way in, it
-  # does not seal it.
+  # Claude's own tools run, as text, before anything unwraps it. It does not
+  # follow `direnv exec`, `devbox run`, or a script that calls the same command a
+  # level down. `bash -c`/`sh -c`/`env`/`nix shell -c`/`nix run -c` — law 1's own
+  # one-off-tool idiom among them — are the one class of wrapper this DOES catch,
+  # not here but in commandShapeGuard's backstop (agent-guards.nix): it unwraps
+  # those specifically and re-checks the inner command against this same list,
+  # for both agents. Found live before that existed: `nix shell nixpkgs#neovim -c
+  # nvim` passed this declarative deny untouched. It narrows the way in further
+  # than it used to; it still does not seal it.
   # Two settings above name behaviour an older claude-code does not have: outputStyle
   # = "Concise" is a built-in added in 2.1.237, and autoMemoryEnabled was read out of
   # 2.1.238's own binary. An older release ignores an unknown setting silently, so the
