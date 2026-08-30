@@ -159,7 +159,7 @@ its directory.
 | **Ownership** | `/etc/nixos` owned by you via tmpfiles, so `nh` and `git` work without sudo from first boot |
 | **Nix** | flakes, weekly GC (14d) + optimise, devenv & nix-community caches, 32 substitution jobs |
 | **Fonts** | Geist Mono as default monospace, JetBrainsMono Nerd Font behind it for icon glyphs |
-| **Packages** | `brave-origin alacritty herdr claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma appflowy geogebra6` + nix-ld. `jjui eza fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
+| **Packages** | `brave-origin alacritty herdr claude-code git gh jujutsu devenv sccache shellcheck gitleaks uv nh nixd statix nixfmt ripgrep fd jq comma geogebra6` + nix-ld. `jjui eza fzf` moved to Home — each has a `programs.*` block that configures it, so declaring it twice was two copies of one fact |
 | **Home** | fish, direnv + nix-direnv, git (identity, `main` default, rebase pulls, autoSetupRemote), jj (identity, `jj`→log, `nvim` as ui.editor), jjui, full gruvbox Alacritty (opens into herdr — Alacritty has no tabs), fzf, eza aliased over `ls`/`ll`/`la`/`lt`, neovim running LazyVim |
 | **Build env** | `RUSTC_WRAPPER=sccache`, `NH_FLAKE=/etc/nixos`, `EDITOR=nvim`, `CLAUDE_CONFIG_DIR` |
 
