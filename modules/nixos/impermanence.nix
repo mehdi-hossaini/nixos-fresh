@@ -133,16 +133,6 @@ in
       # daemon comes up empty on every boot: the image re-pulls, and the
       # container that WinBoat tracks by name is simply gone, so it offers to
       # install Windows again on top of a disk image that is still there.
-      #
-      # SECOND CONSUMER, and the one with more to lose: Plane's data lives in
-      # docker volumes — plane-pgdata, plane-redisdata, plane-rabbitmq and
-      # plane-uploads (modules/nixos/plane.nix) — so this entry is the only
-      # reason its issue tracker survives a reboot. Nothing backs those volumes
-      # up, which means removing this line while Plane is declared destroys the
-      # data with no recovery.
-      # Written down because the winboat paragraph above used to be the whole
-      # justification, and removals happen: appflowy was taken out two commits
-      # before Plane went in.
       "/var/lib/docker"
       "/var/db/sudo"
     ];

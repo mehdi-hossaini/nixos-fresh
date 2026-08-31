@@ -16,7 +16,6 @@
     ./packages.nix
     ./steam.nix
     ./winboat.nix
-    ./plane.nix
     ./agent-wiring.nix
     ./claude.nix
     ./codex.nix
